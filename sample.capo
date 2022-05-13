@@ -1,0 +1,18 @@
+# Crear una clase
+class Cocoyer:
+	def init(nombre, ciudad):
+		self.nombre = nombre
+		self.ciudad = ciudad
+	
+	def saludar:
+		println(f"Hola me llamo $self.nombre y vivo en $self.ciudad")
+
+
+# Crear una instancia
+let gerardo = Cocoyer("Gerardito", "Madeira")
+gerardo.saludar()
+
+# Funciones foxpro
+let nombre = "Gerardito"
+println(right(nombre, 3))
+println(len(nombre))
