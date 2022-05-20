@@ -28,9 +28,17 @@ method eval(e: Array): string =
             result &= ", " & eval(elem)
         else:
             result &= eval(elem)
-        i += 1
+        inc(i)
 
     result &= "]"
+
+
+# ================================================ #
+# Assign Expression (a = b)
+# ================================================ #
+method eval(s: Assign): string =
+    return s.name.lexeme & " = " & eval(s.value)
+
 
 # ================================================ #
 # AssignCollection
@@ -85,21 +93,6 @@ method eval(e: BinaryInc): string =
 
 
 # ================================================ #
-# Binary logical expression
-# ================================================ #
-method eval(e: Logical): string =
-    let lhs: string = eval(e.left)
-    let rhs: string = eval(e.right)
-    var ope: string
-    if e.operator.kind == tkAnd:
-        ope = "and"
-    else:
-        ope = "or"
-    
-    return "(" & lhs & " " & ope & " " & rhs & ")"
-
-
-# ================================================ #
 # Boolean
 # ================================================ #
 method eval(e: Boolean): string =
@@ -117,7 +110,7 @@ method eval(e: Call): string =
             arguments &= ", " & eval(arg)
         else:
             arguments &= eval(arg)
-        i += 1
+        inc(i)
     return eval(e.callee) & "(" & arguments & ")"
 
 # ================================================ #
@@ -133,10 +126,41 @@ method eval(e: Dictionary): string =
         if i > 0:
             output.add(",")
         output.add("\"" & $k & "\"" & ":" & $v)    
-        i += 1
+        inc(i)
     output.add("}")
 
     return output
+
+# ================================================ #
+# Enum expression
+# ================================================ #
+method eval(e: Enum): string =
+    var
+        output: string
+        i: int = 0
+    
+    output.add("{")
+    for k, v in e.elements:
+        if i > 0:
+            output.add(",")
+        inc(i)
+        output.add(k & "=" & $v)
+    output.add("}")
+    return output
+
+
+# ================================================ #
+# Float Literal
+# ================================================ #
+method eval(e: Float): string =
+    return $e.value
+
+
+# ================================================ #
+# Get Expression
+# ================================================ #
+method eval(e: Get): string =
+    return "(" & eval(e.owner) &  "." & e.name.lexeme & ")"
 
 
 # ================================================ #
@@ -147,10 +171,10 @@ method eval(e: Grouping): string =
 
 
 # ================================================ #
-# Identifier
+# Index
 # ================================================ #
-method eval(e: Variable): string =
-    return e.name.lexeme
+method eval(e: Index): string =
+    return eval(e.left) & "[" & eval(e.index) & "]"
 
 
 # ================================================ #
@@ -161,10 +185,39 @@ method eval(e: Integer): string =
 
 
 # ================================================ #
-# Float Literal
+# Binary logical expression
 # ================================================ #
-method eval(e: Float): string =
-    return $e.value
+method eval(e: Logical): string =
+    let lhs: string = eval(e.left)
+    let rhs: string = eval(e.right)
+    var ope: string
+    if e.operator.kind == tkAnd:
+        ope = "and"
+    else:
+        ope = "or"
+    
+    return "(" & lhs & " " & ope & " " & rhs & ")"
+
+
+# ================================================ #
+# Null
+# ================================================ #
+method eval(e: Null): string =
+    return "null"
+
+
+# ================================================ #
+# Self Expression
+# ================================================ #
+method eval(e: Self): string =
+    return e.keyword.lexeme
+
+
+# ================================================ #
+# Set Expression
+# ================================================ #
+method eval(e: Set): string =
+    return eval(e.owner) & "." & e.name.lexeme & " = " & eval(e.value)
 
 
 # ================================================ #
@@ -180,36 +233,12 @@ method eval(e: String): string =
 method eval(e: StringFormat): string =
     return e.source
 
-# ================================================ #
-# Block
-# ================================================ #
-method eval(b: Block): string =
-    return "block"
-
 
 # ================================================ #
-# Expression
+# Super
 # ================================================ #
-method eval(e: Expression): string =
-    return eval(e.expression)
-
-# ================================================ #
-# Get Expression
-# ================================================ #
-method eval(e: Get): string =
-    return "(" & eval(e.owner) &  "." & e.name.lexeme & ")"
-
-# ================================================ #
-# Assign Expression (a = b)
-# ================================================ #
-method eval(e: Assign): string =
-    return e.name.lexeme & " = " & eval(e.value)
-
-# ================================================ #
-# Set Expression
-# ================================================ #
-method eval(e: Set): string =
-    return eval(e.owner) & "." & e.name.lexeme & " = " & eval(e.value)
+method eval(e: Super): string =
+    return e.keyword.lexeme & "." & e.methodName.lexeme
 
 
 # ================================================ #
@@ -223,10 +252,128 @@ method eval(e: Unary): string =
     else: return ""
 
 
+# ================================================ #
+# Identifier
+# ================================================ #
+method eval(e: Variable): string =
+    return e.name.lexeme
+
+
 # ======================================================================================= #
 # Statements
 # ======================================================================================= #
 
+# ================================================ #
+# Block
+# ================================================ #
+method eval(s: Block): string =
+    var output: string
+    output.add("{\n")
+    for statement in s.statements:
+        output.add(eval(statement))
+        output.add("\n")
+
+    output.add("}\n")
+
+    return output
+
+# ================================================ #
+# Break
+# ================================================ #
+method eval(s: Break): string =
+    return "break"
+
+# ================================================ #
+# Class
+# ================================================ #
+method eval(s: Class): string =
+    var output: string
+    output.add("class " & s.name.lexeme)
+    if s.superclass != nil:
+        output.add("(" & eval(s.superclass) & ")")
+    output.add(":\n")
+    # methods
+    for m in s.methods:
+        output.add(eval(m) & "\n")
+
+    return output
+
+
+# ================================================ #
+# Continue
+# ================================================ #
+method eval(s: Continue): string =
+    return "continue"
+
+
+# ================================================ #
+# Defer
+# ================================================ #
+method eval(s: Defer): string =
+    return "defer"
+
+# ================================================ #
+# Expression
+# ================================================ #
+method eval(s: Expression): string =
+    return eval(s.expression)
+
+
+# ================================================ #
+# For Statement
+# ================================================ #
+method eval(s: For): string =
+    var output: string
+    output.add("for ")
+    output.add(s.indexOrKey.lexeme)
+
+    if s.value != nil:
+        output.add("," & s.value.lexeme)
+
+    output.add(" in " & eval(s.collection) & ":\n")    
+
+    for st in s.body:
+        output.add(eval(st) & "\n")
+    
+    return output
+
+
+# ================================================ #
+# Function Statement
+# ================================================ #
+method eval(s: Function): string =
+    var output: string
+    output.add("def " & s.name.lexeme)
+    output.add("(")
+    # parameters (if it does have)
+    var i = 0
+    for p in s.params:
+        if i > 0:
+            output.add(", ")
+        inc(i)
+        output.add(p.lexeme)
+    if s.varArgs:
+        output.add("...")
+    output.add("):\n")
+    # body
+    for b in s.body:
+        output.add(eval(b) & "\n")
+    
+    return output
+
+# ================================================ #
+# If Statement
+# ================================================ #
+method eval(s: If): string =
+    var output: string
+    output.add("if (" & eval(s.condition) & "):\n")
+    output.add(eval(s.thenBranch))
+    if s.elseBranch != nil:
+        output.add("\nelse:\n")
+        output.add(eval(s.elseBranch))
+
+    return output
+ 
 # ================================================ #
 # Let Statement
 # ================================================ #
@@ -234,3 +381,24 @@ method eval(s: Let): string =
     if s.initializer != nil:
         return "let " & s.name.lexeme & " = " & eval(s.initializer)
     return "let " & s.name.lexeme
+
+# ================================================ #
+# Return Statement
+# ================================================ #
+method eval(s: Return): string =
+    var output: string
+    output.add("return ")
+    if s.value != nil:
+        output.add(eval(s.value))
+    
+    return output
+
+# ================================================ #
+# While Statement
+# ================================================ #
+method eval(s: While): string =
+    var output: string
+    output.add("while (" & eval(s.condition) & "):\n")
+    output.add(eval(s.body))
+
+    return output

@@ -28,7 +28,7 @@ proc printUsage: void
 # implementation
 # ===============================================
 proc main: void =
-    let debug: bool = false
+    let debug: bool = true
     if not debug:
         if paramCount() > 1:
             printUsage()

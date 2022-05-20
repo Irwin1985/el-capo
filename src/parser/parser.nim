@@ -186,7 +186,6 @@ proc parse*(p: var Parser): ast.Program =
     return Program(statements: statements)
 
 
-
 # proc parseModules(p: var Parser): seq[ast.Module] =
 #     discard
 
@@ -261,8 +260,8 @@ proc parseClassDeclaration(p: var Parser): ast.Class =
 
         # classBody ::= varDeclaration* methodDeclaration*
         while not p.isAtEnd() and p.curToken.col == classIndent:
-            # parsing var declaration
-            while p.curToken.col == classIndent and p.check(TokenKind.tkIdentifier):
+            # parsing class methods
+            while p.curToken.col == classIndent and p.match(TokenKind.tkDef):
                 classNode.methods.add(p.parseFunctionDeclaration("method"))
 
     return classNode
@@ -295,7 +294,7 @@ proc parserReturnStatement(p: var Parser): ast.Stmt =
     let returnNode = new Return
     returnNode.keyword = p.previous()
 
-    if p.check(TokenKind.tkSemicolon):
+    if not p.check(TokenKind.tkSemicolon):
         returnNode.value = p.parseExpression(lowest)
     
     discard p.consume(TokenKind.tkSemicolon, "Expect newline after return value.")

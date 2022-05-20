@@ -1,1 +1,4 @@
-{"name": "irwin"}
+if true:
+    return "es verdad"
+else:
+    return "es falso"
