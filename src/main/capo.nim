@@ -1,8 +1,12 @@
 # main source file
 
 import os
-import ../lexer/lexer
 import ../token/token
+import ../lexer/lexer
+import ../parser/parser
+import ../ast/ast_printer
+import ../utils/utils
+
 
 var hadError: bool = false
 var hadRuntimeError: bool = false
@@ -14,23 +18,27 @@ proc main: void
 proc runFile(path: string): void
 proc runPrompt: void
 proc run(source: string): void
-proc error(line: int, message: string): void
-proc error(line: int, message: string, exit: bool): void
-proc error(tok: Token, message: string): void
-proc report(line: int, where: string, message: string): void
+proc error*(line: int, message: string): void
+proc error*(line: int, message: string, exit: bool): void
+proc error*(tok: Token, message: string): void
+proc report*(line: int, where: string, message: string): void
 proc printUsage: void
 
 # ===============================================
 # implementation
 # ===============================================
 proc main: void =
-    if paramCount() > 1:
-        printUsage()
-        system.quit(system.QuitFailure)
-    elif paramCount() == 1:
-        runFile(paramStr(1))
+    let debug: bool = false
+    if not debug:
+        if paramCount() > 1:
+            printUsage()
+            system.quit(system.QuitFailure)
+        elif paramCount() == 1:
+            runFile(paramStr(1))
+        else:
+            runPrompt()
     else:
-        runPrompt()
+        runFile(r"C:\Users\irwin.SUBIFOR\el-capo\sample.capo")
 
 
 proc runFile(path: string): void =
@@ -57,8 +65,10 @@ proc runPrompt: void =
 
 proc run(source: string): void =       
     var l:Lexer = newLexer(source)
+    var p:Parser = newParser(l)
+
     # DEBUG LEXER
-    let outputTokens: bool = true
+    let outputTokens: bool = false
     # DEBUG LEXER
     if outputTokens:
         var tok = l.nextToken()
@@ -66,26 +76,31 @@ proc run(source: string): void =
             echo(tok.line, ":", tok.col, "<", tok.kind, ", '", tok.lexeme, "'>")
             tok = l.nextToken()
         echo(tok.line, ":", tok.col, "<", tok.kind, ", '", tok.lexeme, "'>")
+    
+    # Parse the tokens
+    let program = p.parse()
+    let output: string = ast_printer.print(program.statements)
+    echo output
 
 
-proc error(line: int, message: string): void =
+proc error*(line: int, message: string): void =
     report(line, "", message)
 
 
-proc error(line: int, message: string, exit: bool): void =
+proc error*(line: int, message: string, exit: bool): void =
     report(line, "", message)
     if exit:
         system.quit(system.QuitFailure)
 
 
-proc error(tok: Token, message: string): void =
+proc error*(tok: Token, message: string): void =
     if tok.kind == TokenKind.tkEof:
         report(tok.line, " at end", message)
     else:
         report(tok.line, " at '" & tok.lexeme & "'", message)
 
 
-proc report(line: int, where: string, message: string): void =    
+proc report*(line: int, where: string, message: string): void =    
     stderr.writeLine("[line ", line, "] Error ", where, ": ", message)
     hadError = true
 

@@ -214,18 +214,20 @@ proc nextToken*(l: var Lexer): Token =
 
 proc readNumber(l: var Lexer): Token =
     var lexeme = ""
+    var kind: TokenKind = TokenKind.tkInteger
     while isDigit(l.c) or l.c == '_':
         if l.c != '_': lexeme.add(l.c)
         l.advance()
     # check for '.' separator
     if l.c == '.':
+        kind = TokenKind.tkFloat
         lexeme.add(l.c)
         l.advance()
         while isDigit(l.c):
             lexeme.add(l.c)
-            l.advance()
+            l.advance()        
     
-    return l.newToken(TokenKind.tkNumber, lexeme)
+    return l.newToken(kind, lexeme)
 
 
 proc readIdentifier(l: var Lexer): Token =
@@ -382,7 +384,9 @@ proc newToken(l: var Lexer, kind: TokenKind, lexeme: string): Token =
     l.tokAnt = kind
     # convert from string to Double (NUMBER token type)
     case kind:
-    of tkNumber:
+    of tkInteger:
+        return token.Token(kind: kind, intValue: strutils.parseInt(lexeme), line: l.line, col: l.begin_token_col)
+    of tkFloat:
         return token.Token(kind: kind, floatValue: strutils.parseFloat(lexeme), line: l.line, col: l.begin_token_col)
     of tkString, tkStringFormat, tkIdentifier:
         return token.Token(kind: kind, strValue: lexeme, lexeme: lexeme, line: l.line, col: l.begin_token_col)

@@ -65,7 +65,8 @@ type
         tkIdentifier
         tkString
         tkStringFormat
-        tkNumber
+        tkInteger
+        tkFloat
         
         # Others
         tkIllegal
@@ -80,12 +81,15 @@ type
         case kind*: TokenKind
         of tkString, tkStringFormat, tkIdentifier:
             strValue*: string
-        of tkNumber:
+        of tkInteger:
+            intValue*: int
+        of tkFloat:
             floatValue*: float
         of tkTrue, tkFalse:
             boolValue*: bool
         else:
             discard
+
 
 # Keyword dictionary
 var keywords = {
