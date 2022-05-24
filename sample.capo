@@ -1,4 +1,19 @@
-if true:
-    return "es verdad"
-else:
-    return "es falso"
+class Persona:
+    def init(nombre, edad):
+        self.nombre = nombre
+        self.edad = edad
+    
+    def saludar:
+        return "Hola saludar"
+
+
+class Gerente(Persona):
+	def init(nombre, edad, departamento):
+		super.init(nombre, edad)
+		self.departamento = departamento
+	
+	def saludar:
+		return "Soy el gerente del departamento"
+
+let jorge = Gerente("Jorge", 50, "Ventas")
+print(jorge.saludar())

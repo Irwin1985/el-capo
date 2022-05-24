@@ -1,5 +1,6 @@
 import std/strutils
 import ../token/token
+import ../utils/error
 
 type
     Lexer* = ref object of RootObj
@@ -12,6 +13,7 @@ type
         c: char
         tokAnt: TokenKind
 
+
 # helpers data types
 let letters = {'a'..'z', 'A'..'Z', '_'}
 let digits = {'0'..'9'}
@@ -22,26 +24,26 @@ const EOF = '\x00'
 # forward procedures
 # ==================================================== #
 proc newLexer*(input: string): Lexer
-proc nextToken*(l: var Lexer): Token
-proc readNumber(l: var Lexer): Token
-proc readIdentifier(l: var Lexer): Token
-proc readString(l: var Lexer, kind: TokenKind): Token
-proc readRawString(l: var Lexer): Token
-proc advance(l: var Lexer): void
-proc peek(l: var Lexer): char
-proc peekNext(l: var Lexer): char
-proc skipWhitespace(l: var Lexer): void
-proc isMultipleComment(l: var Lexer): bool
+proc nextToken*(l: Lexer): Token
+proc readNumber(l: Lexer): Token
+proc readIdentifier(l: Lexer): Token
+proc readString(l: Lexer, kind: TokenKind): Token
+proc readRawString(l: Lexer): Token
+proc advance(l: Lexer): void
+proc peek(l: Lexer): char
+proc peekNext(l: Lexer): char
+proc skipWhitespace(l: Lexer): void
+proc isMultipleComment(l: Lexer): bool
 proc isSpace(c: char): bool
 proc isDigit(c: char): bool
 proc isLetter(c: char): bool
 proc isIdentifier(c: char): bool
 proc isString(c: char): bool
-proc skipSingleComment(l: var Lexer): void
-proc skipMultipleComment(l: var Lexer): void
-proc skipBackSlash(l: var Lexer): void
-proc newToken(l: var Lexer, kind: TokenKind): Token
-proc newToken(l: var Lexer, kind: TokenKind, lexeme: string): Token
+proc skipSingleComment(l: Lexer): void
+proc skipMultipleComment(l: Lexer): void
+proc skipBackSlash(l: Lexer): void
+proc newToken(l: Lexer, kind: TokenKind): Token
+proc newToken(l: Lexer, kind: TokenKind, lexeme: string): Token
 
 # ==================================================== #
 # implementation
@@ -54,7 +56,7 @@ proc newLexer*(input: string): Lexer =
     result.advance()
 
 
-proc nextToken*(l: var Lexer): Token =
+proc nextToken*(l: Lexer): Token =
     while l.c != EOF:
         l.begin_token_col = l.col
         if isSpace(l.c):
@@ -212,12 +214,13 @@ proc nextToken*(l: var Lexer): Token =
     return l.newToken(TokenKind.tkEof)
 
 
-proc readNumber(l: var Lexer): Token =
+proc readNumber(l: Lexer): Token =
     var lexeme = ""
     var kind: TokenKind = TokenKind.tkInteger
     while isDigit(l.c) or l.c == '_':
         if l.c != '_': lexeme.add(l.c)
         l.advance()
+    
     # check for '.' separator
     if l.c == '.':
         kind = TokenKind.tkFloat
@@ -230,7 +233,7 @@ proc readNumber(l: var Lexer): Token =
     return l.newToken(kind, lexeme)
 
 
-proc readIdentifier(l: var Lexer): Token =
+proc readIdentifier(l: Lexer): Token =
     let left = l.cur_pos
     while isIdentifier(l.c):
         l.advance()
@@ -242,7 +245,7 @@ proc readIdentifier(l: var Lexer): Token =
     return l.newToken(kind, lexeme)
 
 
-proc readString(l: var Lexer, kind: TokenKind): Token =
+proc readString(l: Lexer, kind: TokenKind): Token =
     let str_end = l.c
     var scanning_string_finished = false
     var lexeme: string = ""
@@ -257,9 +260,8 @@ proc readString(l: var Lexer, kind: TokenKind): Token =
             of 'r': lexeme.add('\r')
             of '\'': lexeme.add('\'')
             of '"': lexeme.add('"')            
-            else:
-                # TODO: raise lexical error here.
-                discard
+            else:                
+                error.error(l.line, l.col, "Invalid escape character sequence.", true)
             l.advance()
         else:
             if l.c == str_end:
@@ -271,22 +273,21 @@ proc readString(l: var Lexer, kind: TokenKind): Token =
                 l.advance()
     
     if not scanning_string_finished:
-        # TODO: raise lexical error here.
-        return
+        error.error(l.line, l.col, "unterminated string.", true)
+        
 
     return l.newToken(kind, lexeme)
         
 
-proc readRawString(l: var Lexer): Token =
+proc readRawString(l: Lexer): Token =
     l.advance() # eat the 'r' letter
     let str_end = l.c
     let start_pos = l.cur_pos
     l.advance()
-    while l.c != str_end: l.advance()
+    while l.c != EOF and l.c != str_end: l.advance()
 
     if l.c == EOF:
-        # TODO: raise exception
-        return
+        error.error(l.line, l.col, "unterminated string.", true)
     
     let end_pos = l.cur_pos
     l.advance() # skip the closing string delimiter
@@ -295,7 +296,7 @@ proc readRawString(l: var Lexer): Token =
     return l.newToken(TokenKind.tkString, lexeme)
 
 
-proc advance(l: var Lexer): void =
+proc advance(l: Lexer): void =
     if l.c == '\n':
         l.line += 1
         l.col = 0
@@ -309,25 +310,25 @@ proc advance(l: var Lexer): void =
         l.peek_pos += 1
 
 
-proc peek(l: var Lexer): char =
+proc peek(l: Lexer): char =
     if l.peek_pos >= len(l.input):
         return EOF
     return l.input[l.peek_pos]
 
 
-proc peekNext(l: var Lexer): char =
+proc peekNext(l: Lexer): char =
     let pos = l.peek_pos + 1
     if pos >= len(l.input):
         return EOF
     return l.input[pos]
 
 
-proc skipWhitespace(l: var Lexer): void =
+proc skipWhitespace(l: Lexer): void =
     while l.c != EOF and isSpace(l.c):
         l.advance()
 
 
-proc isMultipleComment(l: var Lexer): bool =
+proc isMultipleComment(l: Lexer): bool =
     return l.c == '"' and l.peek() == '"' and l.peekNext() == '"'
 
 
@@ -351,12 +352,12 @@ proc isString(c: char): bool =
     return c == '\'' or c == '"'
 
 
-proc skipSingleComment(l: var Lexer): void =
+proc skipSingleComment(l: Lexer): void =
     while l.c != EOF and l.c != '\n':
         l.advance()
 
 
-proc skipMultipleComment(l: var Lexer): void =
+proc skipMultipleComment(l: Lexer): void =
     l.advance(); l.advance(); l.advance() # skip begin '"""'
     while (l.c != EOF and not l.isMultipleComment()):
         l.advance()
@@ -367,7 +368,7 @@ proc skipMultipleComment(l: var Lexer): void =
     l.advance(); l.advance(); l.advance() # skip final '"""'
 
 
-proc skipBackSlash(l: var Lexer): void =
+proc skipBackSlash(l: Lexer): void =
     l.skipWhitespace()
     if l.c != '\n':
         # TODO: raise exception
@@ -375,12 +376,12 @@ proc skipBackSlash(l: var Lexer): void =
     l.advance()
 
 
-proc newToken(l: var Lexer, kind: TokenKind): Token =
+proc newToken(l: Lexer, kind: TokenKind): Token =
     l.tokAnt = kind
     return token.Token(kind: kind, line: l.line, col: l.begin_token_col)
 
 
-proc newToken(l: var Lexer, kind: TokenKind, lexeme: string): Token =
+proc newToken(l: Lexer, kind: TokenKind, lexeme: string): Token =
     l.tokAnt = kind
     # convert from string to Double (NUMBER token type)
     case kind:

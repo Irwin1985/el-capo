@@ -1,9 +1,11 @@
+import std/strformat
 import std/tables
 import std/hashes
 import ../token/token
 import ../lexer/lexer
 import ../ast/ast
 import ../utils/utils
+import ../utils/error
 
 const
     lowest      = 1
@@ -18,6 +20,7 @@ const
     unary       = 10
     call        = 11
     index       = 12
+
 
 var precedence = {
     TokenKind.tkEqual: assignment,
@@ -53,8 +56,8 @@ type
         peekToken: Token
         prevToken: Token
 
-    PrefixParseFn = proc(p: var Parser): ast.Expr
-    InfixParseFn = proc(p: var Parser, left: ast.Expr): ast.Expr    
+    PrefixParseFn = proc(p: Parser): ast.Expr
+    InfixParseFn = proc(p: Parser, left: ast.Expr): ast.Expr    
 
 var 
     prefixParseFns = initTable[TokenKind, PrefixParseFn]()
@@ -64,64 +67,65 @@ var
 # Parser forwarded proc
 # ================================================== #
 proc newParser*(l: Lexer): Parser
-proc parse*(p: var Parser): ast.Program
-# proc parseModules(p: var Parser): seq[ast.Module]
+proc parse*(p: Parser): ast.Program
+# proc parseModules(p: Parser): seq[ast.Module]
 # ================================================== #
 # Parsing Declarations procedures
 # ================================================== #
-proc parseDeclaration(p: var Parser): ast.Stmt
-proc parseLetDeclaration(p: var Parser): ast.Let
-proc parseFunctionDeclaration(p: var Parser, kind: string): ast.Function
-proc parseClassDeclaration(p: var Parser): ast.Class
+proc parseDeclaration(p: Parser): ast.Stmt
+proc parseLetDeclaration(p: Parser): ast.Let
+proc parseFunctionDeclaration(p: Parser, kind: string): ast.Function
+proc parseClassDeclaration(p: Parser): ast.Class
 # ================================================== #
 # Parsing Statements procedures
 # ================================================== #
-proc parseStatement(p: var Parser): ast.Stmt
-proc parseIfStatement(p: var Parser): ast.Stmt
-proc parserReturnStatement(p: var Parser): ast.Stmt
-proc parseBlockStatement(p: var Parser): seq[ast.Stmt]
-proc parseForStatement(p: var Parser): ast.Stmt
-proc parseWhileStatement(p: var Parser): ast.Stmt
-proc parseBreakStatement(p: var Parser): ast.Stmt
-proc parseContinueStatement(p: var Parser): ast.Stmt
-proc parseDeferStatement(p: var Parser): ast.Stmt
-proc parseExpressionStatement(p: var Parser): ast.Stmt
+proc parseStatement(p: Parser): ast.Stmt
+proc parseIfStatement(p: Parser): ast.Stmt
+proc parserReturnStatement(p: Parser): ast.Stmt
+proc parseBlockStatement(p: Parser): seq[ast.Stmt]
+proc parseForStatement(p: Parser): ast.Stmt
+proc parseWhileStatement(p: Parser): ast.Stmt
+proc parseBreakStatement(p: Parser): ast.Stmt
+proc parseContinueStatement(p: Parser): ast.Stmt
+proc parseDeferStatement(p: Parser): ast.Stmt
+proc parseExpressionStatement(p: Parser): ast.Stmt
 # ================================================== #
 # Parsing Expressions procedures
 # ================================================== #
-proc parseExpression(p: var Parser, precedence: int): ast.Expr
-proc parseArrayLiteral(p: var Parser): ast.Expr
-proc parseAssignment(p: var Parser, left: ast.Expr): ast.Expr
-proc parseBinaryExpression(p: var Parser, left: ast.Expr): ast.Expr
-proc parseBooleanLiteral(p: var Parser): ast.Expr
-proc parseCallExpression(p: var Parser, left: ast.Expr): ast.Expr
-proc parseDictionary(p: var Parser): ast.Expr
-proc parseFloatLiteral(p: var Parser): ast.Expr
-proc parseGetExpression(p: var Parser, left: ast.Expr): ast.Expr
-proc parseGroupedExpression(p: var Parser): ast.Expr
-proc parseIndexExpression(p: var Parser, left: ast.Expr): ast.Expr
-proc parseIntegerLiteral(p: var Parser): ast.Expr
-proc parseLogicalExpression(p: var Parser, left: ast.Expr): ast.Expr
-proc parseNullLiteral(p: var Parser): ast.Expr
-proc parseSelfExpression(p: var Parser): ast.Expr
-proc parseStringFormat(p: var Parser): ast.Expr
-proc parseStringLiteral(p: var Parser): ast.Expr
-proc parseSuperExpression(p: var Parser): ast.Expr
-proc parseUnaryExpression(p: var Parser): ast.Expr
-proc parseVariableExpression(p: var Parser): ast.Expr
+proc parseExpression(p: Parser, precedence: int): ast.Expr
+proc parseArrayLiteral(p: Parser): ast.Expr
+proc parseAssignment(p: Parser, left: ast.Expr): ast.Expr
+proc parseBinaryExpression(p: Parser, left: ast.Expr): ast.Expr
+proc parseBooleanLiteral(p: Parser): ast.Expr
+proc parseCallExpression(p: Parser, left: ast.Expr): ast.Expr
+proc parseDictionary(p: Parser): ast.Expr
+proc parseFloatLiteral(p: Parser): ast.Expr
+proc parseGetExpression(p: Parser, left: ast.Expr): ast.Expr
+proc parseGroupedExpression(p: Parser): ast.Expr
+proc parseIndexExpression(p: Parser, left: ast.Expr): ast.Expr
+proc parseIntegerLiteral(p: Parser): ast.Expr
+proc parseLogicalExpression(p: Parser, left: ast.Expr): ast.Expr
+proc parseNullLiteral(p: Parser): ast.Expr
+proc parseSelfExpression(p: Parser): ast.Expr
+proc parseStringFormat(p: Parser): ast.Expr
+proc parseStringLiteral(p: Parser): ast.Expr
+proc parseSuperExpression(p: Parser): ast.Expr
+proc parseUnaryExpression(p: Parser): ast.Expr
+proc parseVariableExpression(p: Parser): ast.Expr
 # ================================================== #
 # Parser helper procedures
 # ================================================== #
-proc match(p: var Parser, types: varargs[TokenKind]): bool
-proc consume(p: var Parser, kind: TokenKind, message: string): Token
-proc check(p: var Parser, kind: TokenKind): bool
-proc advance(p: var Parser): Token
-proc isAtEnd(p: var Parser): bool
-proc previous(p: var Parser): Token
-proc error(p: var Parser, message: string)
-proc error(p: var Parser, t: Token, message: string)
-proc synchronize(p: var Parser): void
-proc curPrecedence(p: var Parser): int
+proc match(p: Parser, types: varargs[TokenKind]): bool
+proc consume(p: Parser, kind: TokenKind, message: string): Token
+proc check(p: Parser, kind: TokenKind): bool
+proc advance(p: Parser): Token
+proc isAtEnd(p: Parser): bool
+proc previous(p: Parser): Token
+proc error(p: Parser, message: string)
+proc error(p: Parser, t: Token, message: string)
+proc synchronize(p: Parser): void
+proc curPrecedence(p: Parser): int
+proc getInfixTokens(): string
 
 # ================================================== #
 # Register prefix parsing functions
@@ -178,7 +182,7 @@ proc newParser*(l: Lexer): Parser =
     discard result.advance()
 
 
-proc parse*(p: var Parser): ast.Program =
+proc parse*(p: Parser): ast.Program =
     var statements: seq[Stmt] = newSeq[Stmt]()
     while not p.isAtEnd():
         statements.add(p.parseDeclaration())
@@ -186,11 +190,11 @@ proc parse*(p: var Parser): ast.Program =
     return Program(statements: statements)
 
 
-# proc parseModules(p: var Parser): seq[ast.Module] =
+# proc parseModules(p: Parser): seq[ast.Module] =
 #     discard
 
 
-proc parseDeclaration(p: var Parser): ast.Stmt =
+proc parseDeclaration(p: Parser): ast.Stmt =
     try:
         if p.match(TokenKind.tkLet):
             return p.parseLetDeclaration()
@@ -204,55 +208,55 @@ proc parseDeclaration(p: var Parser): ast.Stmt =
         return nil
 
 
-proc parseLetDeclaration(p: var Parser): ast.Let =
+proc parseLetDeclaration(p: Parser): ast.Let =
     let letNode = new Let
-    letNode.name = p.consume(TokenKind.tkIdentifier, "Expect variable name.")    
+    letNode.name = p.consume(TokenKind.tkIdentifier, "Expecting `identifier` (e.g. `let x`)")    
     if p.match(TokenKind.tkEqual):
         letNode.initializer = p.parseExpression(lowest)
 
-    discard p.consume(TokenKind.tkSemicolon, "Expect newline after variable declaration.")
+    discard p.consume(TokenKind.tkSemicolon, "Expecting `newline` after variable declaration.")
 
     return letNode
 
 
-proc parseFunctionDeclaration(p: var Parser, kind: string): ast.Function =
+proc parseFunctionDeclaration(p: Parser, kind: string): ast.Function =
     let funcNode = new Function
 
-    funcNode.name = p.consume(TokenKind.tkIdentifier, "Expect " & kind & " name.")    
+    funcNode.name = p.consume(TokenKind.tkIdentifier, "Expecting `" & kind & "` name.")    
     funcNode.params = newSeq[Token]()
     funcNode.varArgs = false
 
     if p.match(TokenKind.tkLeftParen):
         if not p.check(TokenKind.tkRightParen):
             dowhile p.match(TokenKind.tkComma):
-                funcNode.params.add(p.consume(TokenKind.tkIdentifier, "Expect parameter name."))
+                funcNode.params.add(p.consume(TokenKind.tkIdentifier, "Expecting parameter name."))
                 if p.check(TokenKind.tkEllipsis) and p.peekToken.kind == TokenKind.tkComma:
                     p.error(p.curToken, "Variadic parameter must be at the end of parameter list.")
             funcNode.varArgs = p.match(TokenKind.tkEllipsis)
-        discard p.consume(TokenKind.tkRightParen, "Expect ')' after parameters.")
+        discard p.consume(TokenKind.tkRightParen, "Expecting `)` after parameters (e.g. `(...)`)")
 
-    discard p.consume(TokenKind.tkColon, "Expect ':' before " & kind & " body.")
+    discard p.consume(TokenKind.tkColon, "Expecting ':' before " & kind & " body.")
     funcNode.body = p.parseBlockStatement()
 
     return funcNode
 
 
-proc parseClassDeclaration(p: var Parser): ast.Class =
+proc parseClassDeclaration(p: Parser): ast.Class =
     let classNode = new Class
 
-    classNode.name = p.consume(TokenKind.tkIdentifier, "Expect class name.")
+    classNode.name = p.consume(TokenKind.tkIdentifier, "Expecting class name.")
     classNode.properties = newSeq[Let]()
     classNode.methods = newSeq[Function]()
 
     # check for inheritance
     if p.match(TokenKind.tkLeftParen):
-        discard p.consume(TokenKind.tkIdentifier, "Expect superclass name.")
+        discard p.consume(TokenKind.tkIdentifier, "Expecting `superclass` name (e.g. `class a(b)`)")
         let variableNode = new Variable
         variableNode.name = p.previous()
         classNode.superclass = variableNode
-        discard p.consume(TokenKind.tkRightParen, "Expect ')' after superclass name.")
+        discard p.consume(TokenKind.tkRightParen, "Expecting `)` after superclass name (e.g. `class a(b)`)")
 
-    discard p.consume(TokenKind.tkColon, "Expect ':' before class body.")
+    discard p.consume(TokenKind.tkColon, "Expecting ':' before class body.")
 
     if not p.match(TokenKind.tkPass):
         # get the first token indent
@@ -267,7 +271,7 @@ proc parseClassDeclaration(p: var Parser): ast.Class =
     return classNode
 
 
-proc parseStatement(p: var Parser): ast.Stmt =
+proc parseStatement(p: Parser): ast.Stmt =
     if p.match(TokenKind.tkIf): return p.parseIfStatement()
     if p.match(TokenKind.tkReturn): return p.parserReturnStatement()
     if p.match(TokenKind.tkColon): return ast.Block(statements: p.parseBlockStatement())
@@ -279,7 +283,7 @@ proc parseStatement(p: var Parser): ast.Stmt =
     return p.parseExpressionStatement()
 
 
-proc parseIfStatement(p: var Parser): ast.Stmt =
+proc parseIfStatement(p: Parser): ast.Stmt =
     let ifNode = new If
     ifNode.condition = p.parseExpression(lowest)
     ifNode.thenBranch = p.parseStatement()
@@ -290,19 +294,19 @@ proc parseIfStatement(p: var Parser): ast.Stmt =
     return ifNode
 
 
-proc parserReturnStatement(p: var Parser): ast.Stmt =
+proc parserReturnStatement(p: Parser): ast.Stmt =
     let returnNode = new Return
     returnNode.keyword = p.previous()
 
     if not p.check(TokenKind.tkSemicolon):
         returnNode.value = p.parseExpression(lowest)
     
-    discard p.consume(TokenKind.tkSemicolon, "Expect newline after return value.")
+    discard p.consume(TokenKind.tkSemicolon, "Expecting `newline` after return value.")
 
     return returnNode
 
 
-proc parseBlockStatement(p: var Parser): seq[ast.Stmt] =
+proc parseBlockStatement(p: Parser): seq[ast.Stmt] =
     var statements = newSeq[Stmt]()
 
     var blockColumn = p.curToken.col
@@ -313,29 +317,29 @@ proc parseBlockStatement(p: var Parser): seq[ast.Stmt] =
     return statements
 
 
-proc parseForStatement(p: var Parser): ast.Stmt =
+proc parseForStatement(p: Parser): ast.Stmt =
     let forNode = new For
 
     forNode.keyword = p.previous()
 
     if p.peekToken.kind == TokenKind.tkComma:
-        forNode.indexOrKey = p.consume(TokenKind.tkIdentifier, "Expect index or key.")
+        forNode.indexOrKey = p.consume(TokenKind.tkIdentifier, "Expecting index or key (e.g `for x, y in ...`)")
         discard p.advance() # ',' already checked
 
-    forNode.value = p.consume(TokenKind.tkIdentifier, "Expect value target.")
-    discard p.consume(TokenKind.tkIn, "Expect 'in' keyword.")
+    forNode.value = p.consume(TokenKind.tkIdentifier, "Expecting value target (e.g `for x, y in ...`)")
+    discard p.consume(TokenKind.tkIn, "Expecting the `in` keyword.")
     forNode.collection = p.parseExpression(lowest)
     forNode.body = p.parseBlockStatement()
 
     return forNode
 
 
-proc parseWhileStatement(p: var Parser): ast.Stmt =
+proc parseWhileStatement(p: Parser): ast.Stmt =
     let whileNode = new While
 
     if p.match(TokenKind.tkLeftParen):
         whileNode.condition = p.parseExpression(lowest)
-        discard p.consume(TokenKind.tkRightParen, "Expect ')' after while condition.")
+        discard p.consume(TokenKind.tkRightParen, "Expecting `)` after while condition.")
     else:
         whileNode.condition = p.parseExpression(lowest)
 
@@ -344,57 +348,60 @@ proc parseWhileStatement(p: var Parser): ast.Stmt =
     return whileNode
 
 
-proc parseBreakStatement(p: var Parser): ast.Stmt =
+proc parseBreakStatement(p: Parser): ast.Stmt =
     let breakNode = new Break
-    discard p.consume(TokenKind.tkSemicolon, "Expect newline after break.")
+    discard p.consume(TokenKind.tkSemicolon, "Expecting `newline` after break.")
 
     return breakNode
 
 
-proc parseContinueStatement(p: var Parser): ast.Stmt =
+proc parseContinueStatement(p: Parser): ast.Stmt =
     let continueNode = new Continue
-    discard p.consume(TokenKind.tkSemicolon, "Expect newline after continue.")
+    discard p.consume(TokenKind.tkSemicolon, "Expecting `newline` after continue.")
     return continueNode
 
 
-proc parseDeferStatement(p: var Parser): ast.Stmt =
+proc parseDeferStatement(p: Parser): ast.Stmt =
     let deferNode = new Defer
     deferNode.body = p.parseStatement()
 
     return deferNode
 
 
-proc parseExpressionStatement(p: var Parser): ast.Stmt =
+proc parseExpressionStatement(p: Parser): ast.Stmt =
     var expStmtNode = new Expression
     expStmtNode.expression = p.parseExpression(lowest)
-    discard p.consume(TokenKind.tkSemicolon, "Expect newline after expression.")    
+    discard p.consume(TokenKind.tkSemicolon, "Expecting `newline` after expression.")    
 
     return expStmtNode
 
 # ================================================== #
 # Parsing Expressions procedures
 # ================================================== #
-proc parseExpression(p: var Parser, precedence: int): ast.Expr =
+proc parseExpression(p: Parser, precedence: int): ast.Expr =
     var 
         prefix: PrefixParseFn = nil
-        left: ast.Expr = nil
+        leftExp: ast.Expr = nil
 
     if prefixParseFns.hasKey(p.curToken.kind):
-        prefix = prefixParseFns[p.curToken.kind]
-    if prefix != nil:
-        left = p.prefix()
+        prefix = prefixParseFns[p.curToken.kind]        
+    else:
+        p.error("Invalid expression: unexpected token `" & p.curToken.lexeme & "`")
+        return nil
+        
+    leftExp = p.prefix()
     
     while not p.check(TokenKind.tkSemicolon) and precedence < p.curPrecedence():
         if infixParseFns.hasKey(p.curToken.kind):
             var infix = infixParseFns[p.curToken.kind]
-            left = p.infix(left)
+            leftExp = p.infix(leftExp)
         else:
-            return left
+            return leftExp
 
-    return left
+    return leftExp
 
 
-proc parseArrayLiteral(p: var Parser): ast.Expr =
+proc parseArrayLiteral(p: Parser): ast.Expr =
     let arrayNode = new Array
     arrayNode.keyword = p.advance()
     arrayNode.elements = newSeq[Expr]()
@@ -403,7 +410,7 @@ proc parseArrayLiteral(p: var Parser): ast.Expr =
         dowhile p.match(TokenKind.tkComma):
             arrayNode.elements.add(p.parseExpression(lowest))
     
-    discard p.consume(TokenKind.tkRightBracket, "Expect ']' after array elements.")
+    discard p.consume(TokenKind.tkRightBracket, "Expecting `]` after array elements.")
 
     return arrayNode
 
@@ -413,7 +420,7 @@ proc parseArrayLiteral(p: var Parser): ast.Expr =
     identifier '=' expression                   <- Assignment
     identifier ('.' identifier)? '=' expression <- Set
 ]#
-proc parseAssignment(p: var Parser, left: ast.Expr): ast.Expr =
+proc parseAssignment(p: Parser, left: ast.Expr): ast.Expr =
     let equals: Token = p.advance() # the '=' token
     let value: Expr = p.parseExpression(lowest)
     if left of Variable:
@@ -433,7 +440,7 @@ proc parseAssignment(p: var Parser, left: ast.Expr): ast.Expr =
     p.error(equals, "Invalid assignment target.")
 
 
-proc parseBinaryExpression(p: var Parser, left: ast.Expr): ast.Expr =
+proc parseBinaryExpression(p: Parser, left: ast.Expr): ast.Expr =
     let binaryNode = new Binary
 
     let operator: Token = p.curToken
@@ -458,14 +465,14 @@ proc parseBinaryExpression(p: var Parser, left: ast.Expr): ast.Expr =
     return binaryNode
 
 
-proc parseBooleanLiteral(p: var Parser): ast.Expr =
+proc parseBooleanLiteral(p: Parser): ast.Expr =
     let booleanNode = new Boolean
     booleanNode.value = (p.advance().kind == TokenKind.tkTrue)
 
     return booleanNode
 
 
-proc parseCallExpression(p: var Parser, left: ast.Expr): ast.Expr =
+proc parseCallExpression(p: Parser, left: ast.Expr): ast.Expr =
     let callNode = new Call
     callNode.callee = left
 
@@ -475,11 +482,11 @@ proc parseCallExpression(p: var Parser, left: ast.Expr): ast.Expr =
         dowhile p.match(TokenKind.tkComma):
             callNode.arguments.add(p.parseExpression(lowest))
     
-    callNode.paren = p.consume(TokenKind.tkRightParen, "Expect ')' after arguments.")
+    callNode.paren = p.consume(TokenKind.tkRightParen, "Expecting `)` after arguments.")
     return callNode
 
 
-proc parseDictionary(p: var Parser): ast.Expr =
+proc parseDictionary(p: Parser): ast.Expr =
     # check for Dictionary or Enum expression
     let keyword: Token = p.advance()
     if p.peekToken.kind == TokenKind.tkColon: # it's a Dictionary!        
@@ -493,55 +500,55 @@ proc parseDictionary(p: var Parser): ast.Expr =
                 if not key.isHashable():
                     raise newException(ParseError, "Invalid type for dictionary key.")
                 
-                discard p.consume(TokenKind.tkColon, "Expect ':' after key definition.")
+                discard p.consume(TokenKind.tkColon, "Expecting `:` after key definition.")
                 dictionaryNode.elements[key] = p.parseExpression(lowest)                
 
-        discard p.consume(TokenKind.tkRightBrace, "Expect '}' after dictionary elements.")
+        discard p.consume(TokenKind.tkRightBrace, "Expecting `}` after dictionary elements.")
         return dictionaryNode
     elif p.peekToken.kind == TokenKind.tkComma: # it's an Enum!
         let enumNode: Enum = new Enum
         enumNode.elements = initTable[string, int]()
         var i:int = 0
         dowhile p.match(TokenKind.tkComma):
-            discard p.consume(TokenKind.tkIdentifier, "Expect IDENTIFIER as enumeration")
+            discard p.consume(TokenKind.tkIdentifier, "Expecting IDENTIFIER as enumeration")
             enumNode.elements[p.previous().lexeme] = i
             i += 1
-        discard p.consume(TokenKind.tkRightBrace, "Expect '}' after enum elements.")
+        discard p.consume(TokenKind.tkRightBrace, "Expecting `}` after enum elements.")
         return enumNode
     else:
         raise newException(ParseError, "Sintax error.")
     discard
 
 
-proc parseFloatLiteral(p: var Parser): ast.Expr =
+proc parseFloatLiteral(p: Parser): ast.Expr =
     let floatNode = new Float
     floatNode.value = p.advance().floatValue
     return floatNode
 
 
-proc parseGetExpression(p: var Parser, left: ast.Expr): ast.Expr =
+proc parseGetExpression(p: Parser, left: ast.Expr): ast.Expr =
     let getNode = new Get
     getNode.owner = left
     discard p.advance() # the '.' token
-    getNode.name = p.consume(TokenKind.tkIdentifier, "Expect property name after '.'.")
+    getNode.name = p.consume(TokenKind.tkIdentifier, "Expecting property name after `.` (e.g. `property.name`)")
     return getNode
 
 
-proc parseGroupedExpression(p: var Parser): ast.Expr =
+proc parseGroupedExpression(p: Parser): ast.Expr =
     let groupingNode = new Grouping
 
     discard p.advance() # the '(' token
     groupingNode.expression = p.parseExpression(lowest)
-    discard p.consume(TokenKind.tkRightParen, "Expect ')' after expression.")
+    discard p.consume(TokenKind.tkRightParen, "Expecting `)` after expression.")
 
     return groupingNode
 
 
-proc parseIndexExpression(p: var Parser, left: ast.Expr): ast.Expr =
+proc parseIndexExpression(p: Parser, left: ast.Expr): ast.Expr =
     let indexNode = new Index
     let keyword: Token = p.advance() # the '[' token
     let index: Expr = p.parseExpression(lowest)
-    discard p.consume(TokenKind.tkRightBracket, "Expect ']' after expression.")
+    discard p.consume(TokenKind.tkRightBracket, "Expecting `]` after expression.")
 
     if p.match(TokenKind.tkEqual):
         if left of Variable:
@@ -564,14 +571,14 @@ proc parseIndexExpression(p: var Parser, left: ast.Expr): ast.Expr =
     return indexNode
 
 
-proc parseIntegerLiteral(p: var Parser): ast.Expr =
+proc parseIntegerLiteral(p: Parser): ast.Expr =
     let integerNode = new Integer
     integerNode.value = p.advance().intValue
     
     return integerNode
 
 
-proc parseLogicalExpression(p: var Parser, left: ast.Expr): ast.Expr =
+proc parseLogicalExpression(p: Parser, left: ast.Expr): ast.Expr =
     let logicalNode = new Logical
 
     logicalNode.operator = p.advance()
@@ -582,49 +589,49 @@ proc parseLogicalExpression(p: var Parser, left: ast.Expr): ast.Expr =
 
 
 
-proc parseNullLiteral(p: var Parser): ast.Expr =
+proc parseNullLiteral(p: Parser): ast.Expr =
     let nullNode = new Null
     discard p.advance()
     return nullNode
 
 
-proc parseSelfExpression(p: var Parser): ast.Expr =
+proc parseSelfExpression(p: Parser): ast.Expr =
     let selfNode = new Self
     selfNode.keyword = p.advance()
 
     return selfNode
 
 
-proc parseStringFormat(p: var Parser): ast.Expr =
+proc parseStringFormat(p: Parser): ast.Expr =
     discard
 
 
-proc parseStringLiteral(p: var Parser): ast.Expr =
+proc parseStringLiteral(p: Parser): ast.Expr =
     let stringLiteralNode = new String
     stringLiteralNode.value = p.advance().lexeme
 
     return stringLiteralNode
 
 
-proc parseSuperExpression(p: var Parser): ast.Expr =
+proc parseSuperExpression(p: Parser): ast.Expr =
     let superNode = new Super
 
     superNode.keyword = p.advance()
-    discard p.consume(TokenKind.tkDot, "Expect '.' after 'super'.")
-    superNode.methodName = p.consume(TokenKind.tkIdentifier, "Expect superclass method name.")
+    discard p.consume(TokenKind.tkDot, "Expecting `.` after `super` (e.g `super.method()`)")
+    superNode.methodName = p.consume(TokenKind.tkIdentifier, "Expecting superclass method name.")
 
     return superNode
 
 
-proc parseUnaryExpression(p: var Parser): ast.Expr =
+proc parseUnaryExpression(p: Parser): ast.Expr =
     let unaryNode = new Unary
     unaryNode.operator = p.advance()
-    unaryNode.right = p.parseExpression(lowest)
+    unaryNode.right = p.parseExpression(unary)
 
     return unaryNode
 
 
-proc parseVariableExpression(p: var Parser): ast.Expr =
+proc parseVariableExpression(p: Parser): ast.Expr =
     let variableNode = new Variable
     variableNode.name = p.advance()
     return variableNode
@@ -632,7 +639,7 @@ proc parseVariableExpression(p: var Parser): ast.Expr =
 # ================================================== #
 # Parser helper procedures
 # ================================================== #
-proc match(p: var Parser, types: varargs[TokenKind]): bool =
+proc match(p: Parser, types: varargs[TokenKind]): bool =
     for t in types:
         if p.check(t):
             discard p.advance()
@@ -640,16 +647,17 @@ proc match(p: var Parser, types: varargs[TokenKind]): bool =
     return false
 
 
-proc consume(p: var Parser, kind: TokenKind, message: string): Token =
+proc consume(p: Parser, kind: TokenKind, message: string): Token =
     if p.check(kind): return p.advance()
-    raise ParseError.newException(message)
+    p.error(message)
+    # raise ParseError.newException(message)
 
 
-proc check(p: var Parser, kind: TokenKind): bool =
+proc check(p: Parser, kind: TokenKind): bool =
     return p.curToken.kind == kind
 
 
-proc advance(p: var Parser): Token =
+proc advance(p: Parser): Token =
     p.prevToken = p.curToken
     p.curToken = p.peekToken
     p.peekToken = p.l.nextToken()
@@ -657,25 +665,25 @@ proc advance(p: var Parser): Token =
     return p.previous()
 
 
-proc isAtEnd(p: var Parser): bool =
+proc isAtEnd(p: Parser): bool =
     return p.curToken.kind == TokenKind.tkEof
 
 
-proc previous(p: var Parser): Token =
+proc previous(p: Parser): Token =
     return p.prevToken
 
 
-proc error(p: var Parser, message: string) =
-    # capo.error(p.curToken, message)
+proc error(p: Parser, message: string) =
+    error.error(p.curToken, message)
     raise ParseError.newException(message)
 
 
-proc error(p: var Parser, t: Token, message: string) =
-    # capo.error(t, message)
+proc error(p: Parser, t: Token, message: string) =
+    error.error(t, message)
     raise ParseError.newException(message) 
     
 
-proc synchronize(p: var Parser): void =
+proc synchronize(p: Parser): void =
     discard p.advance()
     while not p.isAtEnd():
         if p.previous().kind == TokenKind.tkSemicolon: return
@@ -686,8 +694,10 @@ proc synchronize(p: var Parser): void =
         discard p.advance()
 
 
-
-proc curPrecedence(p: var Parser): int =
+proc curPrecedence(p: Parser): int =
     if precedence.hasKey(p.curToken.kind):
         return precedence[p.curToken.kind]
     return lowest
+
+proc getInfixTokens: string =
+    return fmt"`+`, `-`, `*`, `/`, etc"

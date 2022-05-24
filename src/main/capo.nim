@@ -1,71 +1,93 @@
-# main source file
+# ================================================================ #
+# This is the 'El Capo' main file.
+# Usage: form REPL you can hit: 'capo fileName'
+# or simply hit any valid command.
+# 
+# created at: May 13 2022
+# all credits: Irwin Rodríguez <rodriguez.irwin@gmail.com>
+# ================================================================ #
 
 import os
 import ../token/token
 import ../lexer/lexer
 import ../parser/parser
-import ../ast/ast_printer
-import ../utils/utils
+import ../interpreter/resolver
+import ../interpreter/interpreter
+import ../utils/error
+import ../common/types
 
+# import ../ast/ast_printer
 
-var hadError: bool = false
-var hadRuntimeError: bool = false
+type
+    Capo* = ref object of RootObj
+        interpreter: Interpreter
+        debug*: bool
+        hadRuntimeError: bool
 
 # ===============================================
 # forward procedures
 # ===============================================
+proc newCapo: Capo
 proc main: void
-proc runFile(path: string): void
-proc runPrompt: void
-proc run(source: string): void
-proc error*(line: int, message: string): void
-proc error*(line: int, message: string, exit: bool): void
-proc error*(tok: Token, message: string): void
-proc report*(line: int, where: string, message: string): void
+proc runFile(c: Capo, path: string): void
+proc runPrompt(c: Capo): void
+proc run(c: Capo, source: string): void
 proc printUsage: void
+proc printHeader: void
 
 # ===============================================
 # implementation
 # ===============================================
+proc newCapo: Capo =
+    new result
+    result.hadRuntimeError = false
+    result.interpreter = newInterpreter()
+
+
 proc main: void =
-    let debug: bool = true
-    if not debug:
+    let capo = newCapo()
+    # debug
+    capo.debug = true
+    # debug
+    if not capo.debug:
         if paramCount() > 1:
             printUsage()
             system.quit(system.QuitFailure)
         elif paramCount() == 1:
-            runFile(paramStr(1))
+            capo.runFile(paramStr(1))
         else:
-            runPrompt()
+            capo.runPrompt()
     else:
-        runFile(r"C:\Users\irwin.SUBIFOR\el-capo\sample.capo")
+        capo.runFile(r"C:\Users\irwin.SUBIFOR\el-capo\sample.capo")
 
 
-proc runFile(path: string): void =
+proc runFile(c: Capo, path: string): void =
     if not os.fileExists(path):
         stderr.writeLine("error: file not found: ", path)
         printUsage()
         return
     # read all file
     let source = system.readFile(path)
-    run(source & '\n') # '\n' is required for well formated source code.
-    if hadError: system.quit(system.QuitFailure)
+    error.fileName = os.extractFilename(path)
+    c.run(source & '\n') # '\n' is required for well formated source code.
+    if error.hadError: system.quit(system.QuitFailure)
     
 
 
-proc runPrompt: void =
+proc runPrompt(c: Capo): void =
+    printHeader()
     while true:
         stdout.write(">>> ")
         let line = stdin.readLine()
         if line.len == 0:
             break
-        run(line & '\n')
-        hadError = false # we don't care if there was an error in the last interpreted code.
+        c.run(line & '\n')
+        error.hadError = false # we don't care if there was an error in the last interpreted code.
 
 
-proc run(source: string): void =       
-    var l:Lexer = newLexer(source)
-    var p:Parser = newParser(l)
+proc run(c: Capo, source: string): void =       
+    let l:Lexer = newLexer(source)
+    let p:Parser = newParser(l)
 
     # DEBUG LEXER
     let outputTokens: bool = false
@@ -79,35 +101,37 @@ proc run(source: string): void =
     
     # Parse the tokens
     let program = p.parse()
-    let output: string = ast_printer.print(program.statements)
-    echo output
+    # if program.statements.len > 0 and program.statements[0] != nil:
+    #     let output: string = ast_printer.print(program.statements)
+    #     echo output
+    
+    if error.hadError: return
+    
+    # echo ast_printer.print(program.statements)
 
-
-proc error*(line: int, message: string): void =
-    report(line, "", message)
-
-
-proc error*(line: int, message: string, exit: bool): void =
-    report(line, "", message)
-    if exit:
-        system.quit(system.QuitFailure)
-
-
-proc error*(tok: Token, message: string): void =
-    if tok.kind == TokenKind.tkEof:
-        report(tok.line, " at end", message)
-    else:
-        report(tok.line, " at '" & tok.lexeme & "'", message)
-
-
-proc report*(line: int, where: string, message: string): void =    
-    stderr.writeLine("[line ", line, "] Error ", where, ": ", message)
-    hadError = true
-
+    discard newResolver(c.interpreter)
+    resolve(program.statements)
+    
+    if error.hadError: return
+    c.interpreter.interpret(program.statements)
 
 proc printUsage: void =
     stdout.writeLine("Usage: capo [script]")
     stdout.writeLine("use --help for a list of possible options")
+
+
+proc printHeader: void =
+    let logo = """
+  ______ _    _____                  
+ |  ____| |  / ____|                   | Welcome to `El Capo` programming language REPL console.
+ | |__  | | | |     __ _ _ __   ___    | here you can experiment with the language syntax. For best
+ |  __| | | | |    / _` | '_ \ / _ \   | experience, use a text editor and save your program in a
+ | |____| | | |___| (_| | |_) | (_) |  | `program.capo` file and then execute: capo run program.capo
+ |______|_|  \_____\__,_| .__/ \___/   | Use Ctrl+C or `exit` to exit, or `help` for other commands.
+                        | |          
+                        |_|              
+    """
+    stdout.writeLine(logo)
 
 when isMainModule:
     main()
