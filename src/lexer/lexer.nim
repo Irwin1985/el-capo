@@ -1,6 +1,7 @@
 import std/strutils
 import ../token/token
 import ../utils/error
+import ../utils/utils
 
 type
     Lexer* = ref object of RootObj
@@ -13,11 +14,6 @@ type
         c: char
         tokAnt: TokenKind
 
-
-# helpers data types
-let letters = {'a'..'z', 'A'..'Z', '_'}
-let digits = {'0'..'9'}
-let spaces = {' ', '\r', '\t'}
 const EOF = '\x00'
 
 # ==================================================== #    
@@ -34,10 +30,6 @@ proc peek(l: Lexer): char
 proc peekNext(l: Lexer): char
 proc skipWhitespace(l: Lexer): void
 proc isMultipleComment(l: Lexer): bool
-proc isSpace(c: char): bool
-proc isDigit(c: char): bool
-proc isLetter(c: char): bool
-proc isIdentifier(c: char): bool
 proc isString(c: char): bool
 proc skipSingleComment(l: Lexer): void
 proc skipMultipleComment(l: Lexer): void
@@ -59,7 +51,7 @@ proc newLexer*(input: string): Lexer =
 proc nextToken*(l: Lexer): Token =
     while l.c != EOF:
         l.begin_token_col = l.col
-        if isSpace(l.c):
+        if utils.isSpace(l.c):
             l.skipWhitespace()
             continue
         if l.c == '#':
@@ -68,7 +60,7 @@ proc nextToken*(l: Lexer): Token =
         if l.isMultipleComment():
             l.skipMultipleComment()
             continue
-        if isDigit(l.c): return l.readNumber()
+        if utils.isDigit(l.c): return l.readNumber()
         # raw string (without escaping characters)
         if l.c == 'r' and isString(l.peek()):
             return l.readRawString()
@@ -77,7 +69,7 @@ proc nextToken*(l: Lexer): Token =
             l.advance(); # eat the letter 'f'
             return l.readString(TokenKind.tkStringFormat)
 
-        if isLetter(l.c): 
+        if utils.isLetter(l.c): 
             return l.readIdentifier();
 
         if isString(l.c): 
@@ -217,7 +209,7 @@ proc nextToken*(l: Lexer): Token =
 proc readNumber(l: Lexer): Token =
     var lexeme = ""
     var kind: TokenKind = TokenKind.tkInteger
-    while isDigit(l.c) or l.c == '_':
+    while utils.isDigit(l.c) or l.c == '_':
         if l.c != '_': lexeme.add(l.c)
         l.advance()
     
@@ -226,7 +218,7 @@ proc readNumber(l: Lexer): Token =
         kind = TokenKind.tkFloat
         lexeme.add(l.c)
         l.advance()
-        while isDigit(l.c):
+        while utils.isDigit(l.c):
             lexeme.add(l.c)
             l.advance()        
     
@@ -235,7 +227,7 @@ proc readNumber(l: Lexer): Token =
 
 proc readIdentifier(l: Lexer): Token =
     let left = l.cur_pos
-    while isIdentifier(l.c):
+    while utils.isIdentifier(l.c):
         l.advance()
     
     let right = l.cur_pos
@@ -324,28 +316,12 @@ proc peekNext(l: Lexer): char =
 
 
 proc skipWhitespace(l: Lexer): void =
-    while l.c != EOF and isSpace(l.c):
+    while l.c != EOF and utils.isSpace(l.c):
         l.advance()
 
 
 proc isMultipleComment(l: Lexer): bool =
     return l.c == '"' and l.peek() == '"' and l.peekNext() == '"'
-
-
-proc isSpace(c: char): bool =
-    return c in spaces
-
-
-proc isDigit(c: char): bool =
-    return c in digits
-
-
-proc isLetter(c: char): bool =
-    return c in letters
-
-
-proc isIdentifier(c: char): bool =
-    return c in letters or c in digits
 
 
 proc isString(c: char): bool =
@@ -363,7 +339,7 @@ proc skipMultipleComment(l: Lexer): void =
         l.advance()
     
     if not l.isMultipleComment():
-        # TODO: raise error
+        error.error(l.line, l.col, "Unexpected end of file.", true)
         return    
     l.advance(); l.advance(); l.advance() # skip final '"""'
 
@@ -371,7 +347,7 @@ proc skipMultipleComment(l: Lexer): void =
 proc skipBackSlash(l: Lexer): void =
     l.skipWhitespace()
     if l.c != '\n':
-        # TODO: raise exception
+        error.error(l.line, l.col, "Invalid use of `\\` character.", true)
         return
     l.advance()
 

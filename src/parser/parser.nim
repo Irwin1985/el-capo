@@ -1,3 +1,4 @@
+import strutils
 import std/strformat
 import std/tables
 import std/hashes
@@ -603,7 +604,37 @@ proc parseSelfExpression(p: Parser): ast.Expr =
 
 
 proc parseStringFormat(p: Parser): ast.Expr =
-    discard
+    let keyword = p.advance()
+    let source = keyword.lexeme & " "
+    var parsingString = false
+    var builder: string
+    var variables: seq[ast.Expr] = newSeq[ast.Expr]()
+    var words: seq[string] = newSeq[string]()
+
+    for c in source:
+        if parsingString:
+            if utils.isIdentifier(c) or c == '.':
+                builder.add(c)
+                continue
+            else:
+                parsingString = false
+                if builder.len > 0:
+                    let expression = builder
+                    let l = newLexer(expression & '\n')
+                    let tempParser = newParser(l)
+                    let node = tempParser.parseExpression(lowest)
+                    variables.add(node)
+                    words.add("$" & expression)
+        
+        if c == '$':
+            builder = ""
+            parsingString = true        
+    
+    return StringFormat(
+        variables: variables,
+        words: words,
+        source: source
+    )
 
 
 proc parseStringLiteral(p: Parser): ast.Expr =

@@ -1,4 +1,6 @@
 import typetraits
+import sequtils
+import strutils
 import std/tables
 import ../token/token
 import ../ast/ast
@@ -10,6 +12,7 @@ import ../objects/instance
 import ../objects/class
 import ../objects/callable
 import ../objects/builtin
+import stringify
 
 
 var i: Interpreter = nil
@@ -101,8 +104,14 @@ proc executeBlock(i: Interpreter, statements: seq[ast.Stmt], env: Environment): 
     var previous = i.environment
     try:
         i.environment = env
+        var deferBlock: ast.Defer = nil
         for statement in statements:
-            discard interpret(statement)
+            if statement of ast.Defer:
+                deferBlock = ast.Defer(statement)
+            else:
+                discard interpret(statement)
+        if deferBlock != nil:
+            discard interpret(deferBlock)
     finally:
         i.environment = previous
 
@@ -268,7 +277,13 @@ method interpret*(e: ast.String): Object =
 
 
 method interpret*(e: ast.StringFormat): Object =
-    discard
+    # iterate words and variables at the same time with zip
+    let varAndWord = zip(e.words, e.variables)
+    for vw in varAndWord:
+        let res = stringify(interpret(vw[1]))
+        e.source = replace(e.source, vw[0], res)
+
+    return types.String(value: e.source)
 
 
 method interpret*(e: ast.Super): Object =
@@ -294,7 +309,7 @@ method interpret*(e: ast.Variable): Object =
 # STATEMENTS
 # ================================================================== #
 method interpret*(s: ast.Block): Object =
-    discard
+    i.executeBlock(s.statements, newEnclosedEnv(i.environment))
 
 
 method interpret*(s: ast.Break): Object =
@@ -345,7 +360,7 @@ method interpret*(s: ast.Continue): Object =
 
 
 method interpret*(s: ast.Defer): Object =
-    discard
+    interpret(s.body)
 
 
 method interpret*(s: ast.Expression): Object =

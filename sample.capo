@@ -1,19 +1,6 @@
-class Persona:
-    def init(nombre, edad):
-        self.nombre = nombre
-        self.edad = edad
-    
-    def saludar:
-        return "Hola saludar"
+def saludar:
+    defer:
+        print("Adiós --->>>")
+    print("Hola <<<---")
 
-
-class Gerente(Persona):
-	def init(nombre, edad, departamento):
-		super.init(nombre, edad)
-		self.departamento = departamento
-	
-	def saludar:
-		return "Soy el gerente del departamento"
-
-let jorge = Gerente("Jorge", 50, "Ventas")
-print(jorge.saludar())
+saludar()

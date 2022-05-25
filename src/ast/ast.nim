@@ -88,6 +88,7 @@ type
     
     StringFormat* = ref object of Expr
         variables*: seq[Expr]
+        words*: seq[string]
         source*: string
     
     Super* = ref object of Expr

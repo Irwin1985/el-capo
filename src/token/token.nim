@@ -47,6 +47,7 @@ type
         tkDef
         tkDefer
         tkFor
+        tkFormat
         tkFrom
         tkIf
         tkImport
@@ -103,6 +104,7 @@ var keywords = {
         "else":     tkElse,
         "false":    tkFalse,
         "for":      tkFor,
+        "format":   tkFormat,
         "from":     tkFrom,
         "if":       tkIf,
         "import":   tkImport,
