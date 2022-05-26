@@ -1,4 +1,5 @@
 import typetraits
+import hashes
 import sequtils
 import strutils
 import std/tables
@@ -27,52 +28,32 @@ proc executeBlock(i: Interpreter, statements: seq[ast.Stmt], env: Environment): 
 proc resolve*(i: Interpreter, exp: ast.Expr, depth: int): void
 proc applyFunction(f: types.Function, arguments: seq[Object]): Object
 proc applyClass(c: types.Class, arguments: seq[Object]): Object
+proc raiseError(t: Token, m: string): void
+proc raiseError(m: string): void
+proc isNumber(o: types.Object): bool
+proc isFloat(o: varargs[types.Object]): bool
 
-proc isEqual(a: Object, b: Object): bool
+proc isCollection(collection: Object): bool
+
+proc executeForStmt(s: ast.For, collection: types.Array, env: Environment): void
+proc executeForStmt(s: ast.For, collection: types.Integer, env: Environment): void
+proc executeForStmt(s: ast.For, collection: types.String, env: Environment): void
+proc executeForStmt(s: ast.For, collection: types.Dictionary, env: Environment): void
+proc executeForStmt(s: ast.For, collection: types.Enum, env: Environment): void
+
+# proc isEqual(a: Object, b: Object): bool
 proc isTruthy(o: Object): bool
+proc `==`(a: Object, b: Object): bool
 proc checkNumberOperands(operator: Token, left: Object, right: Object): void
 proc checkNumberOperand(operator: Token, operand: Object): void
 proc lookupVariable(name: Token, exp: ast.Expr): Object
-proc doArithmeticWith(operator: Token, left: Object, right: Object): Object
 proc nativeBoolToBooleanObject(value: bool): types.Boolean
 
 
-method interpret*(n: ast.Node): Object {.base.}
-method interpret*(e: ast.Array): Object
-method interpret*(e: ast.Assign): Object
-method interpret*(e: ast.AssignCollection): Object
-method interpret*(e: ast.Binary): Object
-method interpret*(e: ast.BinaryInc): Object
-method interpret*(e: ast.Boolean): Object
-method interpret*(e: ast.Call): Object
-method interpret*(e: ast.Dictionary): Object
-method interpret*(e: ast.Enum): Object
-method interpret*(e: ast.Float): Object
-method interpret*(e: ast.Get): Object
-method interpret*(e: ast.Grouping): Object
-method interpret*(e: ast.Index): Object
-method interpret*(e: ast.Integer): Object
-method interpret*(e: ast.Logical): Object
-method interpret*(e: ast.Null): Object
-method interpret*(e: ast.Self): Object
-method interpret*(e: ast.Set): Object
-method interpret*(e: ast.String): Object
-method interpret*(e: ast.StringFormat): Object
-method interpret*(e: ast.Super): Object
-method interpret*(e: ast.Unary): Object
-method interpret*(e: ast.Variable): Object
-method interpret*(s: ast.Block): Object
-method interpret*(s: ast.Break): Object
-method interpret*(s: ast.Class): Object
-method interpret*(s: ast.Continue): Object
-method interpret*(s: ast.Defer): Object
-method interpret*(s: ast.Expression): Object
-method interpret*(s: ast.For): Object
-method interpret*(s: ast.Function): Object
-method interpret*(s: ast.If): Object
-method interpret*(s: ast.Let): Object
-method interpret*(s: ast.Return): Object
-method interpret*(s: ast.While): Object
+# expression evaluation methods
+method evaluate(n: ast.Expr): Object {.base, warning[LockLevel]:off.}
+# statement execution methods
+method execute(n: ast.Stmt): void {.base, warning[LockLevel]:off.}
 
 # =============================================== #
 # implementation
@@ -90,12 +71,13 @@ proc registerBuiltins: void =
     i.globals.define("print", newBuiltin(BuiltinType.btPrint))
     i.globals.define("alltrim", newBuiltin(BuiltinType.btAlltrim))
     i.globals.define("len", newBuiltin(BuiltinType.btLen))
+    i.globals.define("seconds", newBuiltin(BuiltinType.btSeconds))
 
 
 proc interpret*(i: Interpreter, statements: seq[ast.Stmt]): void =
     try:
         for statement in statements:
-            discard interpret(statement)            
+            execute(statement)            
     except RuntimeError as e:
         error.runtimeError(e)
 
@@ -109,9 +91,9 @@ proc executeBlock(i: Interpreter, statements: seq[ast.Stmt], env: Environment): 
             if statement of ast.Defer:
                 deferBlock = ast.Defer(statement)
             else:
-                discard interpret(statement)
+                execute(statement)
         if deferBlock != nil:
-            discard interpret(deferBlock)
+            execute(deferBlock)
     finally:
         i.environment = previous
 
@@ -119,17 +101,24 @@ proc executeBlock(i: Interpreter, statements: seq[ast.Stmt], env: Environment): 
 proc resolve*(i: Interpreter, exp: Expr, depth: int): void =
     i.locals[exp] = depth
 
-
-method interpret*(n: ast.Node): Object {.base.} =
+# =================================================================== #
+# Expression evaluation method implementation
+# =================================================================== #
+method evaluate(n: ast.Expr): Object {.base.} =
     raise newException(Exception, "Unknown Node type: " & repr(n))
 
 
-method interpret*(e: ast.Array): Object =
-    discard
+method evaluate*(e: ast.Array): Object =
+    var arrayObj = new types.Array
+    arrayObj.elements = newSeq[Object]()
+    for ae in e.elements:
+        arrayObj.elements.add(evaluate(ae))
+    
+    return arrayObj
 
 
-method interpret*(e: ast.Assign): Object =
-    result = interpret(e.value)
+method evaluate*(e: ast.Assign): Object =
+    result = evaluate(e.value)
     if i.locals.hasKey(e):
         let distance = i.locals[e]
         i.environment.assignAt(distance, e.name, result)
@@ -137,48 +126,158 @@ method interpret*(e: ast.Assign): Object =
         i.globals.assign(e.name, result)
 
 
-method interpret*(e: ast.AssignCollection): Object =
-    discard
+method evaluate*(e: ast.AssignCollection): Object =
+    let owner = evaluate(e.left)
+    if owner of types.Array or owner of types.Dictionary:
+        let index = evaluate(e.index)
+        if index == nil:
+            raiseError(e.keyword, "The index must be an integer.")
+        let value = evaluate(e.value)
+        if owner of types.Array:
+            if index of types.Integer:
+                let j = types.Integer(index).value
+                let arrayObj = types.Array(owner)
+                if j < 0 or j >= arrayObj.elements.len:
+                    raiseError(e.keyword, "Index out of bounds")
+                arrayObj.elements[j] = value
+                if i.locals.hasKey(e):
+                    let distance = i.locals[e]
+                    i.environment.assignAt(distance, e.left.name, arrayObj)
+                else:
+                    i.globals.assign(e.left.name, arrayObj)
+            else:
+                raiseError(e.keyword, "Array index must be an integer.")
+        else: # Dictionary        
+            var dictionary = types.Dictionary(owner)
+            if dictionary.elements.hasKey(index.hash()):
+                dictionary.elements[index.hash()] = types.HashPair(key: index, value: value)
+                if i.locals.hasKey(e):
+                    let distance = i.locals[e]
+                    i.environment.assignAt(distance, e.left.name, dictionary)
+                else:
+                    i.globals.assign(e.left.name, dictionary)
+
+        return value
+    else:
+        raiseError("Invalid object for item assignment.")
 
 
-method interpret*(e: ast.Binary): Object =
-    let left = interpret(e.left)
-    let right = interpret(e.right)
+method evaluate*(e: ast.Binary): Object =
+    let left = evaluate(e.left)
+    let right = evaluate(e.right)
 
     case e.operator.kind:
-    of tkGreater:
-        return nativeBoolToBooleanObject(types.Float(left) > types.Float(right))
-    of tkGreaterEqual:
-        return nativeBoolToBooleanObject(types.Float(left) >= types.Float(right))
-    of tkLess:
-        return nativeBoolToBooleanObject(types.Float(left) < types.Float(right))
-    of tkLessEqual:
-        return nativeBoolToBooleanObject(types.Float(left) <= types.Float(right))
-    of tkMinus, tkPlus, tkSlash, tkStar:
-        checkNumberOperands(e.operator, left, right)
-        return doArithmeticWith(e.operator, left, right)
     of tkBangEqual:
-        return nativeBoolToBooleanObject(not isEqual(left, right))
+        if left == right: return oFalse else: return oTrue # negated '!='
     of tkEqualEqual:
-        return nativeBoolToBooleanObject(isEqual(left, right))
+        if left == right: return oTrue else: return oFalse
+    of tkGreater:        
+        checkNumberOperands(e.operator, left, right)
+        if isFloat(left, right):
+            if types.Float(left).value > types.Float(right).value: return oTrue else: return oFalse
+        else:
+            if types.Integer(left).value > types.Integer(right).value: return oTrue else: return oFalse
+    of tkGreaterEqual:
+        checkNumberOperands(e.operator, left, right)
+        if isFloat(left, right):
+            if types.Float(left).value >= types.Float(right).value: return oTrue else: return oFalse
+        else:
+            if types.Integer(left).value >= types.Integer(right).value: return oTrue else: return oFalse
+    of tkLess:
+        checkNumberOperands(e.operator, left, right)
+        if isFloat(left, right):
+            if types.Float(left).value < types.Float(right).value: return oTrue else: return oFalse
+        else:
+            if types.Integer(left).value < types.Integer(right).value: return oTrue else: return oFalse
+    of tkLessEqual:
+        checkNumberOperands(e.operator, left, right)
+        if isFloat(left, right):
+            if types.Float(left).value <= types.Float(right).value: return oTrue else: return oFalse
+        else:
+            if types.Integer(left).value <= types.Integer(right).value: return oTrue else: return oFalse
+    of tkMinus:
+        checkNumberOperands(e.operator, left, right)
+        if isFloat(left, right):
+            return types.Float(value: types.Float(left).value - types.Float(right).value)
+        else:
+            return types.Integer(value: types.Integer(left).value - types.Integer(right).value)
+    of tkPlus:
+        if isNumber(left) and isNumber(right):
+            if isFloat(left, right):
+                return types.Float(value: types.Float(left).value + types.Float(right).value)
+            else:
+                return types.Integer(value: types.Integer(left).value + types.Integer(right).value)
+        elif left of types.String and right of types.String:
+            return types.String(value: types.String(left).value & types.String(right).value)
+        else:
+            raiseError(e.operator, "Operands must be two numbers of two strings.")
+    of tkSlash:
+        checkNumberOperands(e.operator, left, right)        
+        if types.Float(right).value == 0:
+            raiseError(e.operator, "Division by zero.")
+        return types.Float(value: types.Float(left).value / types.Float(right).value)
+    of tkStar:
+        checkNumberOperands(e.operator, left, right)
+        if isFloat(left, right):
+            return types.Float(value: types.Float(left).value * types.Float(right).value)
+        else:
+            return types.Integer(value: types.Integer(left).value * types.Integer(right).value)
     else:
         return oNull
 
 
-method interpret*(e: ast.BinaryInc): Object =
-    discard
+method evaluate*(e: ast.BinaryInc): Object =
+    if e.left of ast.Variable:
+        let rightValue = evaluate(e.right)
+        let variableNode = ast.Variable(e.left)
+        let ownerValue = evaluate(variableNode)
+        let operator = e.operator.kind
+
+        if ownerValue of types.String:
+            if rightValue of types.String:
+                if operator == tkPlusEqual:
+                    let newVal = types.String(ownerValue).value & types.String(rightValue).value
+                    result = types.String(value: newVal)
+                    i.environment.assign(variableNode.name, result)
+                else:
+                    raiseError(e.operator, "unsupported operand for string types.")
+            else:
+                raiseError(e.operator, "can only concatenate strings to strings types.")
+        elif rightValue of types.Float: # when Float it doesn't matter the rightValue type
+            if isNumber(rightValue):
+                let newVal = types.Float(ownerValue).value + types.Float(rightValue).value
+                result = types.Float(value: newVal)
+                i.environment.assign(variableNode.name, result)
+            else:
+                raiseError(e.operator, "unsupported operand for float types.")
+        elif rightValue of types.Integer: # if rightValue is float then the source type
+            if isNumber(rightValue):
+                if rightValue of types.Float:
+                    let newVal = types.Float(ownerValue).value + types.Float(rightValue).value
+                    result = types.Float(value: newVal)
+                else:
+                    let newVal = types.Integer(ownerValue).value + types.Integer(rightValue).value
+                    result = types.Integer(value: newVal)
+
+                i.environment.assign(variableNode.name, result)
+            else:
+                raiseError(e.operator, "unsupported operand for integer types.")
+        else:
+            raiseError(e.operator, "")
+    else:
+        raiseError(e.operator, "Illegal expression for augmented assignment")
 
 
-method interpret*(e: ast.Boolean): Object =
+method evaluate*(e: ast.Boolean): Object =
     return types.Boolean(value: e.value)
 
 
-method interpret*(e: ast.Call): Object =
-    var callee = interpret(e.callee)
+method evaluate*(e: ast.Call): Object =
+    var callee = evaluate(e.callee)
     if callee of types.Callable: 
         var arguments = newSeq[Object]()
         for a in e.arguments:
-            arguments.add(interpret(a))
+            arguments.add(evaluate(a))
 
         var 
             isVarArg = callee.isVarArg()
@@ -188,16 +287,10 @@ method interpret*(e: ast.Call): Object =
         if not isVarArg:
             # TODO: pass null for the rest of arguments
             if arguments.len != arity:
-                raise RuntimeError(
-                    token: e.paren,
-                    message: "Expecter " & $arity & " arguments but got " & $arguments.len & "."
-                )
+                raiseError(e.paren,"Expecter " & $arity & " arguments but got " & $arguments.len & ".")
         else:
             if arity > 0 and arguments.len == 0:
-                raise RuntimeError(
-                    token: e.paren,
-                    message: "Too few arguments."
-                )
+                raiseError(e.paren, "Too few arguments.")
 
         if callee of types.Function:
             result = applyFunction(types.Function(callee), arguments)        
@@ -206,125 +299,187 @@ method interpret*(e: ast.Call): Object =
         elif callee of types.Builtin:
             result = types.Builtin(callee).applyFunction(arguments)
     else:
-        raise RuntimeError(
-            token: e.paren,
-            message: "Can only call functions and classes."
-        )
+        raiseError(e.paren, "Can only call functions and classes.")
 
 
-method interpret*(e: ast.Dictionary): Object =
-    discard
+method evaluate*(e: ast.Dictionary): Object =
+    # HashPair: contains the objects (key, value)
+    # TODO: i think HashPair could be replaced for a Tuple.
+    var dictionary = new types.Dictionary
+    dictionary.elements = initTable[Hash, types.HashPair]()
+    for k, v in e.elements:
+        let key = evaluate(k)
+        if key == nil or key of types.Null:
+            raiseError("Invalid key for diccionary.")
+        let value = evaluate(v)
+        if key.hash() == 0:
+            raiseError("Invalid key for dictionary.")
+        dictionary.elements[key.hash()] = types.HashPair(key: key, value: value)
+
+    return dictionary
+
+method evaluate*(e: ast.Float): Object =
+    return types.Float(value: e.value)
 
 
-method interpret*(e: ast.Enum): Object =
-    discard
-
-
-method interpret*(e: ast.Float): Object =
-    discard
-
-
-method interpret*(e: ast.Get): Object =
-    let owner = interpret(e.owner)
+method evaluate*(e: ast.Get): Object =
+    let owner = evaluate(e.owner)
     if owner of Instance:
         return Instance(owner).get(e.name)
+    elif owner of types.Enum:
+        var enumObj = types.Enum(owner)
+        if enumObj.elements.hasKey(e.name.lexeme):
+            return types.Integer(value: enumObj.elements[e.name.lexeme])
+        else:
+            return oNull
+    # elif owner of types.Dictionary:
+    #     var dictionary = types.Dictionary(owner)
+    #     let key = types.String(value: e.name.lexeme)
+    #     if dictionary.elements.hasKey(key.hash()):
+    #         return dictionary.elements[key.hash()].key
+    #     return oNull
 
-    raise RuntimeError(
-        token: e.name,
-        message: "Only instances have properties."
-    )
+    raiseError(e.name, "Cannot find the proper object for this property.")
 
 
-method interpret*(e: ast.Grouping): Object =
-    discard
+method evaluate*(e: ast.Grouping): Object =
+    return evaluate(e.expression)
 
 
-method interpret*(e: ast.Index): Object =
-    discard
+method evaluate*(e: ast.Index): Object =
+    # evaluate the index or accesor
+    let index = evaluate(e.index)
+    let owner = evaluate(e.left) # ownwe
+    if index == nil or owner == nil:
+        return oNull
+    if owner of types.Array:
+        if index of types.Integer:
+            let i = types.Integer(index).value
+            let arrayObj = types.Array(owner)
+            if i < 0 or i >= arrayObj.elements.len:
+                return oNull
+            return arrayObj.elements[i]
+        else:
+            return oNull
+    elif owner of types.Dictionary:
+        var dictionary = types.Dictionary(owner)
+        if dictionary.elements.hasKey(index.hash()):
+            return dictionary.elements[index.hash()].value
+        else:
+            return oNull
 
 
-method interpret*(e: ast.Integer): Object =
+method evaluate*(e: ast.Integer): Object =
     return types.Integer(value: e.value)
 
 
-method interpret*(e: ast.Logical): Object =
-    discard
+method evaluate*(e: ast.Logical): Object =
+    let left = evaluate(e.left)
+
+    if e.operator.kind == tkOr:
+        if isTruthy(left): return left
+    else:
+        if not isTruthy(left): return left
+    
+    return evaluate(e.right)
 
 
-method interpret*(e: ast.Null): Object =
+method evaluate*(e: ast.Null): Object =
     return oNull
 
 
-method interpret*(e: ast.Self): Object =
+method evaluate*(e: ast.Self): Object =
     return lookupVariable(e.keyword, e)
 
 
-method interpret*(e: ast.Set): Object =
-    let owner = interpret(e.owner)
+method evaluate*(e: ast.Set): Object =
+    let owner = evaluate(e.owner)
+    let value = evaluate(e.value)
     if owner of Instance:
-        let value = interpret(e.value)
         Instance(owner).set(e.name, value)
         return value
+    # elif owner of types.Dictionary:
+    #     var dictionary = types.Dictionary(owner)
+    #     let key = types.String(value: e.name.lexeme)
+    #     if dictionary.elements.hasKey(key.hash()):
+    #         dictionary.elements[key.hash()] = types.HashPair(key: key, value: value)
+    #         # TODO: check if is it neccesary to update the environment.
+    #         if i.locals.hasKey(e):
+    #             let distance = i.locals[e]
+    #             i.environment.assignAt(distance, e.owner, dictionary)
+    #         else:
+    #             i.globals.assign(e.owner, dictionary)
+    #         return value
 
-    raise RuntimeError(
-        token: e.name,
-        message: "Only instances have fields."
-    )
+    raiseError(e.name, "Only instances have fields.")
 
 
-method interpret*(e: ast.String): Object =
+method evaluate*(e: ast.String): Object =
     return types.String(value: e.value)
 
 
-method interpret*(e: ast.StringFormat): Object =
+method evaluate*(e: ast.StringFormat): Object =
     # iterate words and variables at the same time with zip
     let varAndWord = zip(e.words, e.variables)
+    var source = e.source
     for vw in varAndWord:
-        let res = stringify(interpret(vw[1]))
-        e.source = replace(e.source, vw[0], res)
+        let res = stringify(evaluate(vw[1]))        
+        source = replace(source, vw[0], res)
 
-    return types.String(value: e.source)
+    return types.String(value: source)
 
 
-method interpret*(e: ast.Super): Object =
+method evaluate*(e: ast.Super): Object =
     let distance = i.locals[e]
     let superclass = types.Class(i.environment.getAt(distance, "super"))
     let instance = types.Instance(i.environment.getAt(distance-1, "self"))
     let method2 = superclass.findMethod(e.methodName.lexeme)
 
     if method2 == nil:
-        raise RuntimeError(token: e.methodName, message: "Undefined property '" & e.methodName.lexeme & "'")
+        raiseError(e.methodName, "Undefined property '" & e.methodName.lexeme & "'")
     return method2.bindFunction(instance)
 
 
-method interpret*(e: ast.Unary): Object =
-    discard
+method evaluate*(e: ast.Unary): Object =
+    let right = evaluate(e.right)
+    case e.operator.kind:
+    of tkBang:
+        return nativeBoolToBooleanObject(not isTruthy(right))
+    of tkMinus:
+        checkNumberOperand(e.operator, right)
+        if right of types.Integer:
+            return types.Integer(value: -types.Integer(right).value)
+        else:
+            return types.Float(value: -types.Float(right).value)
+    else:
+        return oNull
 
 
-method interpret*(e: ast.Variable): Object =
+method evaluate*(e: ast.Variable): Object =
     result = lookupVariable(e.name, e)
 
 
 # ================================================================== #
-# STATEMENTS
+# Statement execution methods implementation
 # ================================================================== #
-method interpret*(s: ast.Block): Object =
+method execute(n: ast.Stmt): void {.base.} =
+    raise newException(Exception, "Unknown Node type: " & repr(n))
+
+
+method execute(s: ast.Block): void =
     i.executeBlock(s.statements, newEnclosedEnv(i.environment))
 
 
-method interpret*(s: ast.Break): Object =
-    discard
+method execute(s: ast.Break): void =
+    raise types.BreakObj()
 
 
-method interpret*(s: ast.Class): Object =
+method execute*(s: ast.Class): void =
     var superclass: Object = nil
     if s.superclass != nil:
-        superclass = interpret(s.superclass)
+        superclass = evaluate(s.superclass)
         if not (superclass of types.Class):
-            raise RuntimeError(
-                token: s.superclass.name,
-                message: "Superclass must be a class."
-            )
+            raiseError(s.superclass.name, "Superclass must be a class.")
     
     i.environment.define(s.name.lexeme, oNull)
 
@@ -352,26 +507,137 @@ method interpret*(s: ast.Class): Object =
     
     i.environment.assign(s.name, class)
 
-    return oNull
+
+method execute*(s: ast.Continue): void =
+    raise types.ContinueObj()
 
 
-method interpret*(s: ast.Continue): Object =
-    discard
+method execute*(s: ast.Defer): void =
+    execute(s.body)
 
 
-method interpret*(s: ast.Defer): Object =
-    interpret(s.body)
+method execute*(s: ast.Enum): void =
+    var enumTable: types.Enum = new types.Enum
+    enumTable.elements = s.elements
+
+    i.environment.define(s.name.lexeme, enumTable)
 
 
-method interpret*(s: ast.Expression): Object =
-    return interpret(s.expression)
+method execute*(s: ast.Expression): void =
+    discard evaluate(s.expression)
 
 
-method interpret*(s: ast.For): Object =
-    discard
+method execute*(s: ast.For): void =
+    let collection = evaluate(s.collection)
+    if collection == nil:
+        raiseError(s.keyword, "Invalid collection type.")
+    
+    if isCollection(collection):
+        var forEnv = newEnclosedEnv(i.environment)
+        if s.indexOrKey != nil:
+            forEnv.define(s.indexOrKey.lexeme, oNull)
+        
+        forEnv.define(s.value.lexeme, oNull)
+        # star the itaration process
+        if collection of types.Array:
+            executeForStmt(s, types.Array(collection), forEnv)
+        elif collection of types.Integer:
+            executeForStmt(s, types.Integer(collection), forEnv)
+        elif collection of types.String:
+            executeForStmt(s, types.String(collection), forEnv)
+        elif collection of types.Dictionary:
+            executeForStmt(s, types.Dictionary(collection), forEnv)
+        elif collection of types.Enum:
+            executeForStmt(s, types.Enum(collection), forEnv)
 
 
-method interpret*(s: ast.Function): Object =
+proc executeForStmt(s: ast.For, collection: types.Array, env: Environment): void =
+    var index = 0
+    var integerValue = types.Integer(value: index)
+    for k in collection.elements:
+        try:
+            if s.indexOrKey != nil:             
+                integerValue.value = index
+                env.assign(s.indexOrKey, integerValue)
+
+            env.assign(s.value, k)
+            i.executeBlock(s.body, env)
+            inc(index)
+        except types.Return, BreakObj, ContinueObj:
+            let ex = getCurrentException()
+            if ex of BreakObj or ex of types.Return: break
+            continue
+
+
+proc executeForStmt(s: ast.For, collection: types.Integer, env: Environment): void =
+    var size = collection.value
+    var integerValue = types.Integer(value: 0)
+    for j in 0..size:
+        try:
+            if s.indexOrkey != nil:
+                integerValue.value = j
+                env.assign(s.indexOrKey, integerValue)
+            env.assign(s.value, types.Integer(value: j))
+            i.executeBlock(s.body, env)
+        except types.Return, BreakObj, ContinueObj:
+            let ex = getCurrentException()
+            if ex of BreakObj or ex of types.Return: break
+            continue
+
+
+proc executeForStmt(s: ast.For, collection: types.String, env: Environment): void =
+    var index = 0
+    var integerValue = types.Integer(value: index)
+    for v in collection.value:
+        try:
+            if s.indexOrKey != nil:
+                integerValue.value = index
+                env.assign(s.indexOrKey, integerValue)
+            env.assign(s.value, types.String(value: $v))
+            i.executeBlock(s.body, env)            
+            inc(index)
+        except types.Return, BreakObj, ContinueObj:
+            let ex = getCurrentException()
+            if ex of BreakObj or ex of types.Return: break
+            continue
+
+
+proc executeForStmt(s: ast.For, collection: types.Dictionary, env: Environment): void =
+    for k, v in collection.elements:
+        try:
+            if s.indexOrKey != nil:
+                env.assign(s.indexOrKey, v.key)
+            env.assign(s.value, v.value)
+            i.executeBlock(s.body, env)
+        except types.Return, BreakObj, ContinueObj:
+            let ex = getCurrentException()
+            if ex of BreakObj or ex of types.Return: break
+            continue
+
+
+proc executeForStmt(s: ast.For, collection: types.Enum, env: Environment): void =
+    var stringValue = types.String(value: "")
+    for k, v in collection.elements:
+        try:
+            if s.indexOrKey != nil:
+                stringValue.value = k
+                env.assign(s.indexOrKey, stringValue)
+            env.assign(s.value, types.Integer(value: v))            
+            i.executeBlock(s.body, env)
+        except types.Return, BreakObj, ContinueObj:
+            let ex = getCurrentException()
+            if ex of BreakObj or ex of types.Return: break
+            continue
+
+
+proc isCollection(collection: Object): bool =
+    return collection of types.Enum or
+            collection of types.Integer or
+            collection of types.String or
+            collection of types.Array or
+            collection of types.Dictionary
+
+method execute*(s: ast.Function): void =
     let function = types.Function(
         declaration: s,
         closure: i.environment,
@@ -379,34 +645,39 @@ method interpret*(s: ast.Function): Object =
     )
     i.environment.define(s.name.lexeme, function)
 
-    return oNull
+
+method execute*(s: ast.If): void =
+    if isTruthy(evaluate(s.condition)):
+        execute(s.thenBranch)
+    elif s.elseBranch != nil:
+        execute(s.elseBranch)
 
 
-method interpret*(s: ast.If): Object =
-    discard
-
-
-method interpret*(s: ast.Let): Object =
-    new result
+method execute*(s: ast.Let): void =
+    var initializer: types.Object = nil
     if s.initializer != nil:
-        result = interpret(s.initializer)
+        initializer = evaluate(s.initializer)
 
-    i.environment.define(s.name.lexeme, result)
-    return oNull
+    i.environment.define(s.name.lexeme, initializer)
 
 
-method interpret*(s: ast.Return): Object =
-    var value: Object = nil
+method execute*(s: ast.Return): void =
+    var value: types.Object = nil
     if s.value != nil:        
-        value = interpret(s.value)
+        value = evaluate(s.value)
 
     raise types.Return(
         value: value
     )
 
 
-method interpret*(s: ast.While): Object =
-    discard
+method execute*(s: ast.While): void =
+    while isTruthy(evaluate(s.condition)):
+        try:
+            execute(s.body)
+        except BreakObj, ContinueObj:
+            let ex = getCurrentException()
+            if ex of BreakObj: break
 
 
 proc applyFunction(f: types.Function, arguments: seq[Object]): Object =
@@ -452,10 +723,17 @@ proc applyClass(c: types.Class, arguments: seq[Object]): Object =
 # ===================================================================== #
 # HELPER FUNCTIONS
 # ===================================================================== #
-proc isEqual(a: Object, b: Object): bool =
-    if a of types.Null and b of types.Null: return true
-    if a of types.Null: return false
-    return a == b
+# proc isEqual(a: Object, b: Object): bool =
+#     if a of types.Null and b of types.Null: return true
+#     if a of types.Null: return false
+#     if a of types.String and b of types.String:
+#         return types.String(a).value == types.String(b).value
+#     elif a of types.Integer and b of types.Integer:
+#         return types.Integer(a).value == types.Integer(b).value
+#     elif a of types.Float and b of types.Float:
+#         return types.Float(a).value == types.Float(b).value
+#     else:
+#         return a == b
 
 
 proc isTruthy(o: Object): bool =
@@ -464,16 +742,31 @@ proc isTruthy(o: Object): bool =
     return true
 
 
+proc `==`(a: Object, b: Object): bool =
+    if a of types.Null and b of types.Null: return true
+    if a of types.String and b of types.String:
+        return types.String(a).value == types.String(b).value
+    elif a of types.Integer and b of types.Integer:
+        return types.Integer(a).value == types.Integer(b).value
+    elif a of types.Float and b of types.Float:
+        return types.Float(a).value == types.Float(b).value
+    elif a of types.Boolean and b of types.Boolean:
+        return types.Boolean(a).value == types.Boolean(b).value
+    else:
+        return false
+
+
 proc checkNumberOperands(operator: Token, left: Object, right: Object): void =
-    if (left of types.Integer or left of types.Float) and (right of types.Integer or right of types.Float):
+    if isNumber(left) and isNumber(right):
         return
-    raise RuntimeError(token: operator, message: "Operands must be numbers.")
+    raiseError(operator, "Operands must be numbers.")
 
 
 proc checkNumberOperand(operator: Token, operand: Object): void =
-    if operand of types.Integer or operand of types.Float:
+    if isNumber(operand):
         return
-    raise RuntimeError(token: operator, message: "Operand must be number.")
+    raiseError(operator, "Operand must be number.")
+
 
 proc lookupVariable(name: Token, exp: ast.Expr): Object =
     if i.locals.hasKey(exp):
@@ -483,36 +776,26 @@ proc lookupVariable(name: Token, exp: ast.Expr): Object =
         return i.globals.get(name)
 
 
-proc doArithmeticWith(operator: Token, left: Object, right: Object): Object =
-    if operator.kind == tkSlash:
-        if types.Integer(right).value == 0:
-            raise RuntimeError(token: operator, message: "Division by zero.")
-        return types.Float(value: types.Integer(left).value / types.Integer(right).value)
-
-    if left of types.Float or right of types.Float:
-        case operator.kind:
-        of tkPlus:
-            return types.Float(value: types.Float(left).value + types.Float(right).value)
-        of tkMinus:
-            return types.Float(value: types.Float(left).value - types.Float(right).value)
-        of tkStar:
-            return types.Float(value: types.Float(left).value * types.Float(right).value)
-        else:
-            return oNull
-    else:
-        case operator.kind:
-        of tkPlus:
-            return types.Integer(value: types.Integer(left).value + types.Integer(right).value)
-        of tkMinus:
-            return types.Integer(value: types.Integer(left).value - types.Integer(right).value)
-        of tkStar:
-            return types.Integer(value: types.Integer(left).value * types.Integer(right).value)
-        else:
-            return oNull
-
-
 proc nativeBoolToBooleanObject(value: bool): types.Boolean =
     if value:
         return oTrue
     else:
         return oFalse
+
+
+proc raiseError(t: Token, m: string): void =
+    raise RuntimeError(token: t, message: m)
+
+
+proc raiseError(m: string): void =
+    raise RuntimeError(message: m)
+
+
+proc isNumber(o: types.Object): bool =
+    return o of types.Integer or o of types.Float
+
+
+proc isFloat(o: varargs[types.Object]): bool =
+    for obj in o:
+        if obj of types.Float: return true
+    return false

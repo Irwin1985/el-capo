@@ -1,4 +1,3 @@
-import strutils
 import std/strformat
 import std/tables
 import std/hashes
@@ -50,7 +49,7 @@ var precedence = {
 }.toTable
 
 type
-    ParseError* = object of Exception
+    ParseError* = object of CatchableError
     Parser* = ref object of RootObj
         l: Lexer
         curToken: Token
@@ -89,6 +88,7 @@ proc parseWhileStatement(p: Parser): ast.Stmt
 proc parseBreakStatement(p: Parser): ast.Stmt
 proc parseContinueStatement(p: Parser): ast.Stmt
 proc parseDeferStatement(p: Parser): ast.Stmt
+proc parseEnumStatement(p: Parser): ast.Stmt
 proc parseExpressionStatement(p: Parser): ast.Stmt
 # ================================================== #
 # Parsing Expressions procedures
@@ -281,6 +281,7 @@ proc parseStatement(p: Parser): ast.Stmt =
     if p.match(TokenKind.tkBreak): return p.parseBreakStatement()
     if p.match(TokenKind.tkContinue): return p.parseContinueStatement()
     if p.match(TokenKind.tkDefer): return p.parseDeferStatement()
+    if p.match(TokenKind.tkEnum): return p.parseEnumStatement()
     return p.parseExpressionStatement()
 
 
@@ -451,7 +452,7 @@ proc parseBinaryExpression(p: Parser, left: ast.Expr): ast.Expr =
 
     if operator.kind in [TokenKind.tkPlusEqual, TokenKind.tkMinusEqual, 
                          TokenKind.tkStarEqual, TokenKind.tkSlashEqual]:
-        # it's an incrementer operator (+=, -=, *=, /=)
+        # it's an augmented operator (+=, -=, *=, /=)
         let binaryIncNode = new BinaryInc
         binaryIncNode.left = left
         binaryIncNode.operator = operator
@@ -488,37 +489,42 @@ proc parseCallExpression(p: Parser, left: ast.Expr): ast.Expr =
 
 
 proc parseDictionary(p: Parser): ast.Expr =
-    # check for Dictionary or Enum expression
     let keyword: Token = p.advance()
-    if p.peekToken.kind == TokenKind.tkColon: # it's a Dictionary!        
-        var dictionaryNode: Dictionary = new Dictionary
-        dictionaryNode.keyword = keyword
-        dictionaryNode.elements = initTable[Expr, Expr]()
-        
-        if not p.check(TokenKind.tkRightBrace):
-            dowhile p.match(TokenKind.tkComma):
-                var key = p.parseExpression(lowest)
-                if not key.isHashable():
-                    raise newException(ParseError, "Invalid type for dictionary key.")
-                
-                discard p.consume(TokenKind.tkColon, "Expecting `:` after key definition.")
-                dictionaryNode.elements[key] = p.parseExpression(lowest)                
+    var dictionaryNode: Dictionary = new Dictionary
+    dictionaryNode.keyword = keyword
+    dictionaryNode.elements = initTable[Expr, Expr]()
 
-        discard p.consume(TokenKind.tkRightBrace, "Expecting `}` after dictionary elements.")
-        return dictionaryNode
-    elif p.peekToken.kind == TokenKind.tkComma: # it's an Enum!
-        let enumNode: Enum = new Enum
-        enumNode.elements = initTable[string, int]()
-        var i:int = 0
+    if not p.check(TokenKind.tkRightBrace):
         dowhile p.match(TokenKind.tkComma):
-            discard p.consume(TokenKind.tkIdentifier, "Expecting IDENTIFIER as enumeration")
-            enumNode.elements[p.previous().lexeme] = i
-            i += 1
-        discard p.consume(TokenKind.tkRightBrace, "Expecting `}` after enum elements.")
-        return enumNode
-    else:
-        raise newException(ParseError, "Sintax error.")
-    discard
+            var key = p.parseExpression(lowest)
+            if not key.isHashable():
+                p.error("Invalid type for dictionary key.")
+
+            discard p.consume(TokenKind.tkColon, "Expecting `:` after key definition.")
+            dictionaryNode.elements[key] = p.parseExpression(lowest)                
+
+    discard p.consume(TokenKind.tkRightBrace, "Expecting `}` after dictionary elements.")
+    return dictionaryNode
+
+
+proc parseEnumStatement(p: Parser): ast.Stmt =
+    let enumNode: Enum = new Enum
+    enumNode.keyword = p.previous() # enum token
+    enumNode.elements = initTable[string, int]()
+    enumNode.name = p.consume(TokenKind.tkIdentifier, "Expecting IDENTIFIER as enum name.")
+    discard p.consume(TokenKind.tkColon, "Expecting `:` before enum definition.")
+    var i:int = 0
+    let col = p.curToken.col
+    while not p.isAtEnd() and p.curToken.col == col:
+        let key = p.consume(TokenKind.tkIdentifier, "Expecting IDENTIFIER as enumeration")
+        if p.match(TokenKind.tkEqual):
+            i = p.consume(TokenKind.tkInteger, "Expecting integer literal.").intValue
+        discard p.consume(TokenKind.tkSemicolon, "Expecting newline separator")
+
+        enumNode.elements[key.lexeme] = i
+        i += 1
+    
+    return enumNode
 
 
 proc parseFloatLiteral(p: Parser): ast.Expr =
@@ -581,13 +587,13 @@ proc parseIntegerLiteral(p: Parser): ast.Expr =
 
 proc parseLogicalExpression(p: Parser, left: ast.Expr): ast.Expr =
     let logicalNode = new Logical
-
-    logicalNode.operator = p.advance()
-    let precedence = p.curPrecedence()
+    
+    logicalNode.operator = p.curToken
+    let precedence: int = p.curPrecedence()
+    discard p.advance()
     logicalNode.right = p.parseExpression(precedence)
-
+    logicalNode.left = left
     return logicalNode
-
 
 
 proc parseNullLiteral(p: Parser): ast.Expr =

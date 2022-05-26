@@ -34,42 +34,7 @@ type
 # ======================================================== #
 proc newResolver*(interpreter: Interpreter): Resolver
 proc resolve*(statements: seq[Stmt]): void
-method resolve(n: Node): void {.base.}
-method resolve(e: Array): void
-method resolve(e: Assign): void
-method resolve(e: AssignCollection): void
-method resolve(e: Binary): void
-method resolve(e: BinaryInc): void
-method resolve(e: Boolean): void
-method resolve(e: Call): void
-method resolve(e: Dictionary): void
-method resolve(e: Enum): void
-method resolve(e: Float): void
-method resolve(e: Get): void
-method resolve(e: Grouping): void
-method resolve(e: Index): void
-method resolve(e: Integer): void
-method resolve(e: Logical): void
-method resolve(e: Null): void
-method resolve(e: Self): void
-method resolve(e: Set): void
-method resolve(e: String): void
-method resolve(e: StringFormat): void
-method resolve(e: Super): void
-method resolve(e: Unary): void
-method resolve(e: Variable): void
-method resolve(s: Block): void
-method resolve(s: Break): void
-method resolve(s: Class): void
-method resolve(s: Continue): void
-method resolve(s: Defer): void
-method resolve(s: Expression): void
-method resolve(s: For): void
-method resolve(s: Function): void
-method resolve(s: If): void
-method resolve(s: Let): void
-method resolve(s: Return): void
-method resolve(s: While): void
+method resolve(n: Node): void {.base, warning[LockLevel]:off.}
 
 proc beginScope(r: Resolver): void
 proc endScope(r: Resolver): void
@@ -81,7 +46,6 @@ proc push(r: Resolver, val: Table[string, bool]): void
 proc pop(r: Resolver): void
 proc peek(r: Resolver): Table[string, bool]
 proc isEmpty(r: Resolver): bool
-
 
 
 var r*: Resolver
@@ -231,7 +195,7 @@ method resolve(e: BinaryInc): void =
 # Boolean
 # ================================================ #
 method resolve(e: Boolean): void =
-    discard
+    return
 
 
 # ================================================ #
@@ -256,8 +220,8 @@ method resolve(e: Dictionary): void =
 # ================================================ #
 # Enum expression
 # ================================================ #
-method resolve(e: Enum): void =
-    discard
+method resolve(s: Enum): void =
+    r.declare(s.name)
 
 
 # ================================================ #
@@ -471,7 +435,11 @@ method resolve(s: Expression): void =
 # For Statement
 # ================================================ #
 method resolve(s: For): void =
+    let enclosingFunction = r.currentFunction
+    r.currentFunction = FunctionType.ftFunction
+
     r.beginScope()
+
     if s.indexOrKey != nil:
         r.declare(s.indexOrKey)
         r.define(s.indexOrKey)
@@ -483,6 +451,8 @@ method resolve(s: For): void =
     resolve(s.body)
 
     r.endScope()
+
+    r.currentFunction = enclosingFunction
 
 
 # ================================================ #

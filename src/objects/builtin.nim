@@ -1,6 +1,7 @@
 import strutils
 import ../common/types
 import ../interpreter/stringify
+import std/times
 
 
 type
@@ -8,6 +9,7 @@ type
         btPrint
         btAlltrim
         btLen
+        btSeconds
 
 
 proc newBuiltin*(t: BuiltinType): Builtin =
@@ -28,6 +30,12 @@ proc newBuiltin*(t: BuiltinType): Builtin =
         result = BuiltinLen(
             name: "len",
             paramSize: 1,
+            isVariadic: false
+        )
+    of btSeconds:
+        result = BuiltinSeconds(
+            name: "seconds",
+            paramSize: 0,
             isVariadic: false
         )
 
@@ -55,3 +63,9 @@ method applyFunction*(f: types.BuiltinLen, arguments: seq[Object]): Object =
         return Integer(value: String(obj).value.len)
     
     return oNull
+
+method applyFunction*(f: types.BuiltinSeconds, arguments: seq[Object]): Object =
+    if arguments.len > 0:
+        raise RuntimeError(message: "Unexpected argument")
+
+    return types.Float(value: cpuTime())

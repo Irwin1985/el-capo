@@ -1,6 +1,2 @@
-def saludar:
-    defer:
-        print("Adiós --->>>")
-    print("Hola <<<---")
-
-saludar()
+let guapa = true or "si está guapa"
+print(guapa)

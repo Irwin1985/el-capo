@@ -45,10 +45,6 @@ type
         keyword*: Token
         elements*: Table[Expr, Expr]
     
-    Enum* = ref object of Expr
-        keyword*: Token
-        elements*: Table[string, int]
-    
     Float* = ref object of Expr
         value*: float
 
@@ -122,7 +118,12 @@ type
     
     Defer* = ref object of Stmt
         body*: Stmt
-    
+
+    Enum* = ref object of Stmt        
+        keyword*: Token
+        name*: Token
+        elements*: Table[string, int]
+
     Expression* = ref object of Stmt
         expression*: Expr
     
@@ -203,7 +204,8 @@ proc isHashable*(n: Expr): bool =
     if n of Float: return true
     if n of Boolean: return true
     if n of String: return true
-    if n of StringFormat: return true    
+    if n of StringFormat: return true
+    if n of Variable: return true  
 
     return false
     

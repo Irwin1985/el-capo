@@ -43,6 +43,7 @@ type
         tkContinue
         tkClass
         tkElse
+        tkEnum        
         tkFalse
         tkDef
         tkDefer
@@ -102,6 +103,7 @@ var keywords = {
         "def":      tkDef,
         "defer":    tkDefer,
         "else":     tkElse,
+        "enum":     tkEnum,
         "false":    tkFalse,
         "for":      tkFor,
         "format":   tkFormat,
